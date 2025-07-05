@@ -134,3 +134,8 @@ testpaths = [
     "tests",
 ]
 asyncio_mode = "auto"
+markers = [
+    "integration: marks tests that make real API calls (may incur costs)",
+    "unit: marks tests that use mocks and don't make external calls",
+    "slow: marks tests that are slow to run",
+]

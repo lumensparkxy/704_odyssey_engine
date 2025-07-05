@@ -121,17 +121,34 @@ class IntentAnalyzer:
         try:
             return json.loads(response)
         except json.JSONDecodeError:
-            # Fallback intent analysis
-            return {
-                "research_type": "general_research",
-                "domain": "nutrition",
-                "scope": "broad",
-                "key_entities": [context['original_query']],
-                "research_questions": [f"What are the best options for: {context['original_query']}?"],
-                "context_requirements": [],
-                "output_preferences": ["comprehensive_report"],
-                "confidence": 70
-            }
+            # Try extracting JSON from markdown code blocks
+            try:
+                import re
+                json_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response, re.DOTALL)
+                if json_match:
+                    json_content = json_match.group(1).strip()
+                    return json.loads(json_content)
+                
+                # If no code blocks, try cleaning common markdown artifacts
+                cleaned_response = response.strip()
+                if cleaned_response.startswith('```') and cleaned_response.endswith('```'):
+                    lines = cleaned_response.split('\n')
+                    if len(lines) > 2:
+                        cleaned_response = '\n'.join(lines[1:-1])
+                
+                return json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                # Fallback intent analysis
+                return {
+                    "research_type": "general_research",
+                    "domain": "nutrition",
+                    "scope": "broad",
+                    "key_entities": [context['original_query']],
+                    "research_questions": [f"What are the best options for: {context['original_query']}?"],
+                    "context_requirements": [],
+                    "output_preferences": ["comprehensive_report"],
+                    "confidence": 70
+                }
     
     async def _perform_intent_analysis(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Perform the core intent analysis."""
@@ -172,8 +189,25 @@ class IntentAnalyzer:
         try:
             return json.loads(response)
         except json.JSONDecodeError:
-            # Fallback parsing if JSON is malformed
-            return self._parse_fallback_response(response, context)
+            # Try extracting JSON from markdown code blocks
+            try:
+                import re
+                json_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response, re.DOTALL)
+                if json_match:
+                    json_content = json_match.group(1).strip()
+                    return json.loads(json_content)
+                
+                # If no code blocks, try cleaning common markdown artifacts
+                cleaned_response = response.strip()
+                if cleaned_response.startswith('```') and cleaned_response.endswith('```'):
+                    lines = cleaned_response.split('\n')
+                    if len(lines) > 2:
+                        cleaned_response = '\n'.join(lines[1:-1])
+                
+                return json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                # Fallback parsing if JSON is malformed
+                return self._parse_fallback_response(response, context)
     
     async def _needs_clarification(self, intent_analysis: Dict[str, Any]) -> bool:
         """Determine if clarification is needed based on confidence and missing info."""
@@ -253,10 +287,30 @@ class IntentAnalyzer:
         
         response = await self.gemini_client.generate_response(prompt)
         try:
+            # Try parsing the response as-is first
             return json.loads(response)
         except json.JSONDecodeError:
-            # Fallback to simple questions
-            return self._generate_fallback_questions(missing_info)
+            # Try extracting JSON from markdown code blocks
+            try:
+                # Look for JSON wrapped in ```json ... ``` or ``` ... ```
+                import re
+                json_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response, re.DOTALL)
+                if json_match:
+                    json_content = json_match.group(1).strip()
+                    return json.loads(json_content)
+                
+                # If no code blocks, try cleaning common markdown artifacts
+                cleaned_response = response.strip()
+                if cleaned_response.startswith('```') and cleaned_response.endswith('```'):
+                    # Remove outer code block markers
+                    lines = cleaned_response.split('\n')
+                    if len(lines) > 2:
+                        cleaned_response = '\n'.join(lines[1:-1])
+                
+                return json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                # Final fallback to simple questions
+                return self._generate_fallback_questions(missing_info)
     
     def _parse_fallback_response(self, response: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Parse response when JSON parsing fails."""
