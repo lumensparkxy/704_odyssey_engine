@@ -10,7 +10,7 @@ import asyncio
 import click
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from rich.console import Console
+from rich.console import Console # type: ignore
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -163,7 +163,12 @@ Let's start your research journey!
                 elif result["status"] == "completed":
                     progress.update(task, description="Research completed!")
                     await self._show_research_results(result)
+                elif result["status"] == "error":
+                    progress.stop()
+                    self.console.print(f"[red]❌ Research failed: {result.get('error', 'Unknown error')}[/red]")
+                    self.console.print("[yellow]Check the logs/odyssey.log file for more details.[/yellow]")
                 else:
+                    progress.stop()
                     self.console.print(f"[red]❌ Research failed: {result.get('error', 'Unknown error')}[/red]")
                     
             except Exception as e:
@@ -212,12 +217,18 @@ Let's start your research journey!
                 if result["status"] == "completed":
                     progress.update(task, description="Research completed!")
                     await self._show_research_results(result)
+                elif result["status"] == "error":
+                    progress.stop()
+                    self.console.print(f"[red]❌ Research failed: {result.get('error', 'Unknown error')}[/red]")
+                    self.console.print("[yellow]Check the logs/odyssey.log file for more details.[/yellow]")
                 else:
+                    progress.stop()
                     self.console.print(f"[red]❌ Research failed: {result.get('error', 'Unknown error')}[/red]")
                     
             except Exception as e:
                 progress.stop()
                 self.console.print(f"[red]❌ Error during research: {str(e)}[/red]")
+                self.console.print("[yellow]Check the logs/odyssey.log file for more details.[/yellow]")
     
     async def _show_research_results(self, result: Dict[str, Any]):
         """Show research results to the user."""

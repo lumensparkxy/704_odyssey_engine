@@ -35,7 +35,21 @@ class IntentAnalyzer:
         # Build context from previous responses
         context = self._build_context(query, user_responses)
         
-        # Analyze the intent
+        # If user has provided responses, assume clarification is complete and proceed
+        if user_responses and len(user_responses) > 0:
+            # Incorporate user responses into the analysis
+            intent_analysis = await self._perform_intent_analysis_with_responses(context)
+            return {
+                "needs_clarification": False,
+                "intent": intent_analysis,
+                "confidence": intent_analysis.get("confidence", 80),
+                "research_questions": intent_analysis.get("research_questions", [query]),
+                "key_entities": intent_analysis.get("key_entities", []),
+                "domain": intent_analysis.get("domain", "general"),
+                "scope": intent_analysis.get("scope", "broad")
+            }
+        
+        # Analyze the intent for first time
         intent_analysis = await self._perform_intent_analysis(context)
         
         # Determine if we need clarification
@@ -53,7 +67,11 @@ class IntentAnalyzer:
         return {
             "needs_clarification": False,
             "intent": intent_analysis,
-            "confidence": intent_analysis.get("confidence", 100)
+            "confidence": intent_analysis.get("confidence", 100),
+            "research_questions": intent_analysis.get("research_questions", [query]),
+            "key_entities": intent_analysis.get("key_entities", []),
+            "domain": intent_analysis.get("domain", "general"),
+            "scope": intent_analysis.get("scope", "broad")
         }
     
     def _build_context(self, query: str, user_responses: Optional[Dict] = None) -> Dict[str, Any]:
@@ -72,6 +90,48 @@ class IntentAnalyzer:
                 })
         
         return context
+    
+    async def _perform_intent_analysis_with_responses(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform intent analysis incorporating user responses."""
+        prompt = f"""
+        Analyze the following research query with user-provided clarifications:
+        
+        Original Query: {context['original_query']}
+        
+        User Clarifications:
+        {json.dumps(context.get('conversation_history', []), indent=2)}
+        
+        Based on the original query and the user's clarifications, provide a comprehensive intent analysis.
+        Even if the user said "unknown" to some questions, use your best judgment to proceed with the research.
+        
+        Return a JSON response with:
+        1. research_type: (comparison, analysis, timeline, pros_cons, general_research)
+        2. domain: The subject domain (food, nutrition, health, etc.)
+        3. scope: (broad, specific, detailed)
+        4. key_entities: List of main entities/subjects to research
+        5. research_questions: Specific questions to answer based on the original query
+        6. context_requirements: What context is needed (can be empty if sufficient info provided)
+        7. output_preferences: How to present the information
+        8. confidence: Confidence in this analysis (0-100)
+        
+        For food/breakfast research, focus on nutritional value, health benefits, convenience, and general recommendations.
+        """
+        
+        response = await self.gemini_client.generate_response(prompt)
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            # Fallback intent analysis
+            return {
+                "research_type": "general_research",
+                "domain": "nutrition",
+                "scope": "broad",
+                "key_entities": [context['original_query']],
+                "research_questions": [f"What are the best options for: {context['original_query']}?"],
+                "context_requirements": [],
+                "output_preferences": ["comprehensive_report"],
+                "confidence": 70
+            }
     
     async def _perform_intent_analysis(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Perform the core intent analysis."""

@@ -60,41 +60,53 @@ class DataGatherer:
         
         # Gather from each source type according to priority
         for source_type in self.source_priority:
-            print(f"📡 Gathering data from {source_type}...")
+            try:
+                print(f"📡 Gathering data from {source_type}...")
+                
+                if source_type == "internal_knowledge":
+                    internal_data = await self._gather_internal_knowledge(research_questions, key_entities)
+                    gathered_data["sources"]["internal_knowledge"] = internal_data
+                    
+                elif source_type == "google_search":
+                    search_data = await self._gather_google_search(research_questions, key_entities)
+                    gathered_data["sources"]["google_search"] = search_data
+                    
+                elif source_type == "provided_documents":
+                    doc_data = await self._gather_document_data(intent_result)
+                    gathered_data["sources"]["provided_documents"] = doc_data
+                    
+                elif source_type == "web_scraping":
+                    # Only scrape if we have URLs from search
+                    search_data = gathered_data["sources"].get("google_search", {})
+                    scraped_data = await self._gather_web_scraping(search_data.get("urls", []))
+                    gathered_data["sources"]["web_scraping"] = scraped_data
+                    
+            except Exception as e:
+                print(f"⚠️ Error gathering data from {source_type}: {str(e)}")
+                gathered_data["sources"][source_type] = {"error": str(e)}
+        
+        try:
+            # Assess source reliability
+            gathered_data["source_reliability"] = await self._assess_source_reliability(gathered_data["sources"])
             
-            if source_type == "internal_knowledge":
-                internal_data = await self._gather_internal_knowledge(research_questions, key_entities)
-                gathered_data["sources"]["internal_knowledge"] = internal_data
-                
-            elif source_type == "google_search":
-                search_data = await self._gather_google_search(research_questions, key_entities)
-                gathered_data["sources"]["google_search"] = search_data
-                
-            elif source_type == "provided_documents":
-                doc_data = await self._gather_document_data(intent_result)
-                gathered_data["sources"]["provided_documents"] = doc_data
-                
-            elif source_type == "web_scraping":
-                scraped_data = await self._gather_web_scraping(search_data.get("urls", []))
-                gathered_data["sources"]["web_scraping"] = scraped_data
-        
-        # Assess source reliability
-        gathered_data["source_reliability"] = await self._assess_source_reliability(gathered_data["sources"])
-        
-        # Identify conflicts between sources
-        gathered_data["conflicts"] = await self._identify_data_conflicts(gathered_data["sources"])
-        
-        # Consolidate information
-        gathered_data["consolidated_information"] = await self._consolidate_information(
-            gathered_data["sources"],
-            gathered_data["conflicts"]
-        )
-        
-        # Assess coverage
-        gathered_data["coverage_assessment"] = await self._assess_coverage(
-            research_questions,
-            gathered_data["consolidated_information"]
-        )
+            # Identify conflicts between sources
+            gathered_data["conflicts"] = await self._identify_data_conflicts(gathered_data["sources"])
+            
+            # Consolidate information
+            gathered_data["consolidated_information"] = await self._consolidate_information(
+                gathered_data["sources"],
+                gathered_data["conflicts"]
+            )
+            
+            # Assess coverage
+            gathered_data["coverage_assessment"] = await self._assess_coverage(
+                research_questions,
+                gathered_data["consolidated_information"]
+            )
+            
+        except Exception as e:
+            print(f"⚠️ Error in post-processing: {str(e)}")
+            gathered_data["processing_errors"] = str(e)
         
         return gathered_data
     
@@ -149,21 +161,34 @@ class DataGatherer:
         # Generate search queries
         search_queries = await self._generate_search_queries(research_questions, key_entities)
         
-        for query in search_queries:
+        for query in search_queries[:3]:  # Limit to 3 queries to prevent hanging
             print(f"🔍 Searching: {query}")
             
-            # Use Gemini's grounding capability for search
-            grounded_response = await self.gemini_client.generate_with_grounding(
-                f"Research and provide detailed information about: {query}",
-                enable_search=True
-            )
-            
-            search_data["queries"].append(query)
-            search_data["results"].append(grounded_response)
-            
-            # Extract URLs from response (this would be improved with actual grounding API)
-            urls = await self._extract_urls_from_response(grounded_response["response"])
-            search_data["urls"].extend(urls)
+            try:
+                # Use Gemini's grounding capability for search with timeout
+                grounded_response = await asyncio.wait_for(
+                    self.gemini_client.generate_with_grounding(
+                        f"Research and provide detailed information about: {query}",
+                        enable_search=True
+                    ),
+                    timeout=30  # 30 second timeout
+                )
+                
+                search_data["queries"].append(query)
+                search_data["results"].append(grounded_response)
+                
+                # Extract URLs from response (this would be improved with actual grounding API)
+                urls = await self._extract_urls_from_response(grounded_response["response"])
+                search_data["urls"].extend(urls)
+                
+            except asyncio.TimeoutError:
+                print(f"⚠️ Search timeout for query: {query}")
+                search_data["queries"].append(query)
+                search_data["results"].append({"response": "Search timed out", "error": "timeout"})
+            except Exception as e:
+                print(f"⚠️ Search error for query '{query}': {str(e)}")
+                search_data["queries"].append(query)
+                search_data["results"].append({"response": f"Search failed: {str(e)}", "error": str(e)})
         
         # Remove duplicates
         search_data["urls"] = list(set(search_data["urls"]))
