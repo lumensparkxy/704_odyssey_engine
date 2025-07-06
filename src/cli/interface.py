@@ -43,6 +43,7 @@ class OdysseyCLI:
             "MAX_SCRAPING_DEPTH": int(os.getenv("MAX_SCRAPING_DEPTH", "3")),
             "MAX_SEARCH_RESULTS": int(os.getenv("MAX_SEARCH_RESULTS", "10")),
             "MAX_FOLLOW_UP_QUESTIONS": int(os.getenv("MAX_FOLLOW_UP_QUESTIONS", "5")),
+            "MAX_REMOTE_CALLS": int(os.getenv("MAX_REMOTE_CALLS", "10")),
             "SESSION_STORAGE_PATH": os.getenv("SESSION_STORAGE_PATH", "./sessions"),
             "REPORTS_OUTPUT_PATH": os.getenv("REPORTS_OUTPUT_PATH", "./reports"),
             "USER_AGENT": os.getenv("USER_AGENT", "Mozilla/5.0 (compatible; OdysseyEngine/1.0)"),
@@ -495,6 +496,7 @@ The comprehensive research report has been saved and is ready for review.
 - Max Scraping Depth: {self.config.get('MAX_SCRAPING_DEPTH')} levels
 - Max Search Results: {self.config.get('MAX_SEARCH_RESULTS')}
 - Max Follow-up Questions: {self.config.get('MAX_FOLLOW_UP_QUESTIONS')}
+- Max Remote Calls (Google Search): {self.config.get('MAX_REMOTE_CALLS')} (not configurable)
 
 **Storage Paths:**
 - Sessions: {self.config.get('SESSION_STORAGE_PATH')}

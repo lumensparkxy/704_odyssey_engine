@@ -98,6 +98,8 @@ class GeminiClient:
             if enable_search:
                 try:
                     # Use actual Google Search grounding
+                    # Note: max_remote_calls is not configurable via GoogleSearch() parameters
+                    # It's an internal library setting that defaults to 10
                     config = GenerateContentConfig(
                         tools=[Tool(google_search=GoogleSearch())],
                         temperature=0.5,
