@@ -56,7 +56,7 @@ class WebScraper:
         self.max_content_length = 50000
         
         # Blocked domains/extensions
-        self.blocked_extensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.tar', '.gz']
+        self.blocked_extensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.tar', '.gz']
         self.blocked_domains = ['facebook.com', 'twitter.com', 'instagram.com', 'tiktok.com']
         
         self.session = None
