@@ -1,0 +1,39 @@
+{
+    "python.defaultInterpreter": "./.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.terminal.activateEnvInCurrentTerminal": true,
+    "terminal.integrated.env.osx": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+    },
+    "terminal.integrated.profiles.osx": {
+        "Python (.venv)": {
+            "path": "zsh",
+            "args": [
+                "-c",
+                "source ${workspaceFolder}/.vscode/activate_env.sh && exec zsh"
+            ],
+            "icon": "python"
+        }
+    },
+    "terminal.integrated.defaultProfile.osx": "Python (.venv)",
+    "python.analysis.extraPaths": [
+        "./src"
+    ],
+    "python.analysis.autoSearchPaths": true,
+    "terminal.integrated.shellIntegration.enabled": true,
+    "terminal.integrated.shellIntegration.showWelcome": false,
+    "files.associations": {
+        "*.md": "markdown"
+    },
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.formatting.provider": "black",
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+    }
+}
