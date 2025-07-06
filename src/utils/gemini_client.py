@@ -9,6 +9,11 @@ import asyncio
 from typing import Dict, List, Optional, Any, Union
 from google import genai
 from google.genai import types
+from google.genai.types import (
+    GenerateContentConfig,
+    GoogleSearch,
+    Tool,
+)
 
 
 class GeminiClient:
@@ -90,29 +95,87 @@ class GeminiClient:
             Response with grounding information
         """
         try:
-            # Configure grounding
             if enable_search:
-                # Note: This is a placeholder for the actual grounding configuration
-                # The exact implementation may vary based on Gemini API updates
-                grounded_prompt = f"""
-                Please research and provide information about: {prompt}
-                
-                Use the most current and reliable sources available.
-                Include citations and source reliability assessment.
-                """
+                try:
+                    # Use actual Google Search grounding
+                    config = GenerateContentConfig(
+                        tools=[Tool(google_search=GoogleSearch())],
+                        temperature=0.5,
+                        max_output_tokens=8192,
+                        safety_settings=self.safety_settings
+                    )
+                    
+                    response = await self.client.aio.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt,
+                        config=config
+                    )
+                    
+                    # Extract basic source information if available
+                    sources = []
+                    grounding_info = None
+                    
+                    if hasattr(response, 'candidates') and response.candidates:
+                        candidate = response.candidates[0]
+                        if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+                            grounding_info = candidate.grounding_metadata
+                            sources = self._extract_basic_sources(grounding_info)
+                    
+                    return {
+                        "response": response.text,
+                        "grounding_enabled": True,
+                        "sources": sources
+                        # Removed grounding_info to avoid JSON serialization issues
+                    }
+                    
+                except Exception as grounding_error:
+                    print(f"⚠️ Grounding failed, falling back to regular generation: {str(grounding_error)}")
+                    # Fallback to regular generation
+                    response_text = await self.generate_response(prompt)
+                    return {
+                        "response": response_text,
+                        "grounding_enabled": False,
+                        "sources": [],
+                        "fallback_reason": f"Grounding failed: {str(grounding_error)}"
+                    }
             else:
-                grounded_prompt = prompt
-            
-            response = await self.generate_response(grounded_prompt)
-            
-            return {
-                "response": response,
-                "grounding_enabled": enable_search,
-                "sources": []  # This would be populated by actual grounding API
-            }
+                # Regular generation without grounding
+                response_text = await self.generate_response(prompt)
+                return {
+                    "response": response_text,
+                    "grounding_enabled": False,
+                    "sources": []
+                }
             
         except Exception as e:
             raise GeminiAPIError(f"Error with grounded generation: {str(e)}")
+    
+    def _extract_basic_sources(self, grounding_info) -> List[str]:
+        """Extract basic source URLs from grounding information."""
+        sources = []
+        try:
+            # Extract URLs from grounding_chunks
+            if hasattr(grounding_info, 'grounding_chunks'):
+                for chunk in grounding_info.grounding_chunks:
+                    if hasattr(chunk, 'web') and chunk.web:
+                        if hasattr(chunk.web, 'uri'):
+                            sources.append(chunk.web.uri)
+                        elif hasattr(chunk.web, 'url'):
+                            sources.append(chunk.web.url)
+                            
+            # Also check older structure for backward compatibility
+            elif hasattr(grounding_info, 'web_search_queries'):
+                for query_result in grounding_info.web_search_queries:
+                    if hasattr(query_result, 'sources'):
+                        for source in query_result.sources:
+                            if hasattr(source, 'uri'):
+                                sources.append(source.uri)
+                            elif hasattr(source, 'url'):
+                                sources.append(source.url)
+        except Exception as e:
+            print(f"Warning: Could not extract grounding sources: {e}")
+        
+        return sources
     
     async def analyze_content(self, content: str, analysis_type: str = "general") -> Dict[str, Any]:
         """

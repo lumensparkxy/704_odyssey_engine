@@ -161,25 +161,29 @@ class DataGatherer:
         # Generate search queries
         search_queries = await self._generate_search_queries(research_questions, key_entities)
         
-        for query in search_queries[:3]:  # Limit to 3 queries to prevent hanging
+        for query in search_queries[:self.config.get("MAX_SEARCH_QUERIES", 3)]:  # Configurable limit to prevent hanging
             print(f"🔍 Searching: {query}")
             
             try:
-                # Use Gemini's grounding capability for search with timeout
+                # Use Gemini's grounding capability for search with configurable timeout
                 grounded_response = await asyncio.wait_for(
                     self.gemini_client.generate_with_grounding(
                         f"Research and provide detailed information about: {query}",
                         enable_search=True
                     ),
-                    timeout=30  # 30 second timeout
+                    timeout=self.config.get("REQUEST_TIMEOUT", 30)
                 )
                 
                 search_data["queries"].append(query)
                 search_data["results"].append(grounded_response)
                 
-                # Extract URLs from response (this would be improved with actual grounding API)
-                urls = await self._extract_urls_from_response(grounded_response["response"])
-                search_data["urls"].extend(urls)
+                # Extract URLs from grounding sources or fallback to response text
+                if grounded_response.get("sources"):
+                    search_data["urls"].extend(grounded_response["sources"])
+                else:
+                    # Fallback to regex extraction from response text
+                    urls = await self._extract_urls_from_response(grounded_response["response"])
+                    search_data["urls"].extend(urls)
                 
             except asyncio.TimeoutError:
                 print(f"⚠️ Search timeout for query: {query}")
@@ -246,7 +250,7 @@ class DataGatherer:
         
         followed_data = []
         
-        for link in links[:5]:  # Limit links per page
+        for link in links[:self.config.get("MAX_LINKS_PER_PAGE", 5)]:  # Configurable limit links per page
             if link in scraped_data["depth_map"]:
                 continue  # Already scraped
             
@@ -298,7 +302,7 @@ class DataGatherer:
         import re
         url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
         urls = re.findall(url_pattern, response_text)
-        return urls[:10]  # Limit URLs
+        return urls[:self.config.get("MAX_URLS_FROM_RESPONSE", 10)]  # Configurable URL limit
     
     async def _assess_source_reliability(self, sources: Dict[str, Any]) -> Dict[str, float]:
         """Assess the reliability of each data source."""

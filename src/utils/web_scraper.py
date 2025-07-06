@@ -285,7 +285,7 @@ class WebScraper:
         
         # Remove duplicates and limit count
         unique_links = list(set(links))
-        return unique_links[:20]  # Limit to prevent explosion
+        return unique_links[:self.config.get("MAX_LINKS_PER_PAGE", 20)]  # Configurable limit to prevent explosion
     
     def _extract_metadata(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Extract metadata from the page."""

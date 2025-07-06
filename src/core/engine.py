@@ -54,6 +54,81 @@ class ResearchEngine:
         except Exception as e:
             self.logger.error(f"Failed to initialize research engine: {str(e)}")
             raise
+    
+    async def _parse_json_response(self, response: str, expected_type: str = "array", 
+                                 fallback_value: Any = None, max_retries: int = 1,
+                                 method_name: str = "unknown") -> Any:
+        """
+        Robust JSON parsing utility with better error handling and validation.
+        
+        Args:
+            response: Raw response string from API
+            expected_type: "array", "object", or "any"
+            fallback_value: Value to return if parsing fails
+            max_retries: Number of retries (for future use)
+            method_name: Name of calling method for logging
+            
+        Returns:
+            Parsed JSON or fallback value
+        """
+        if not response or not response.strip():
+            self.logger.warning(f"Empty response in {method_name}")
+            return fallback_value
+        
+        # Clean the response to handle potential formatting issues
+        cleaned_response = response.strip()
+        
+        # Log the actual response for debugging (truncated to avoid log spam)
+        if self.config.get("json_debug_logging", False):
+            response_preview = cleaned_response[:200] + "..." if len(cleaned_response) > 200 else cleaned_response
+            self.logger.debug(f"{method_name} response preview: {response_preview}")
+        else:
+            self.logger.debug(f"{method_name} received response ({len(cleaned_response)} chars)")
+        
+        # Attempt to extract JSON if wrapped in markdown or extra text
+        if "```json" in cleaned_response:
+            # Extract JSON from markdown code blocks
+            json_start = cleaned_response.find("```json") + 7
+            json_end = cleaned_response.find("```", json_start)
+            if json_end != -1:
+                cleaned_response = cleaned_response[json_start:json_end].strip()
+        elif "```" in cleaned_response:
+            # Extract from generic code blocks
+            json_start = cleaned_response.find("```") + 3
+            json_end = cleaned_response.find("```", json_start)
+            if json_end != -1:
+                cleaned_response = cleaned_response[json_start:json_end].strip()
+        
+        # Validate JSON structure before parsing based on expected type
+        if expected_type == "array":
+            if not cleaned_response.startswith('[') or not cleaned_response.endswith(']'):
+                self.logger.warning(f"Response doesn't appear to be a JSON array in {method_name}: {response_preview}")
+                return fallback_value
+        elif expected_type == "object":
+            if not cleaned_response.startswith('{') or not cleaned_response.endswith('}'):
+                self.logger.warning(f"Response doesn't appear to be a JSON object in {method_name}: {response_preview}")
+                return fallback_value
+        
+        try:
+            parsed_json = json.loads(cleaned_response)
+            
+            # Additional type validation
+            if expected_type == "array" and not isinstance(parsed_json, list):
+                self.logger.warning(f"Parsed JSON is not a list in {method_name}")
+                return fallback_value
+            elif expected_type == "object" and not isinstance(parsed_json, dict):
+                self.logger.warning(f"Parsed JSON is not a dict in {method_name}")
+                return fallback_value
+            
+            return parsed_json
+            
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"JSON parsing error in {method_name}: {str(e)}")
+            self.logger.debug(f"Failed response content: {response[:500] if response else 'None'}")
+            return fallback_value
+        except Exception as e:
+            self.logger.error(f"Unexpected error in {method_name}: {str(e)}")
+            return fallback_value
         
     async def start_research_session(self, initial_query: str) -> str:
         """
@@ -260,21 +335,54 @@ class ResearchEngine:
                 "supporting_evidence": ["Eggs provide complete proteins", "Oats contain beta-glucan fiber"]
             }}
         ]
+        
+        IMPORTANT: Respond ONLY with valid JSON. Do not include any explanatory text before or after the JSON.
         """
         
-        try:
-            response = await self.gemini_client.generate_response(prompt)
-            if not response.strip():
-                self.logger.warning("Empty response from theme identification")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = await self.gemini_client.generate_response(prompt)
+                
+                themes = await self._parse_json_response(
+                    response, 
+                    expected_type="array", 
+                    fallback_value=None,
+                    method_name="theme_identification"
+                )
+                
+                if themes is None:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"Theme identification failed, retrying (attempt {attempt + 1}/{max_retries})")
+                        continue
+                    return self._fallback_themes(data_result)
+                
+                # Validate each theme has required fields
+                valid_themes = []
+                for theme in themes:
+                    if isinstance(theme, dict) and all(key in theme for key in ['title', 'description', 'supporting_evidence']):
+                        valid_themes.append(theme)
+                    else:
+                        self.logger.warning(f"Invalid theme structure: {theme}")
+                
+                if valid_themes:
+                    self.logger.info(f"Successfully identified {len(valid_themes)} themes")
+                    return valid_themes
+                else:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"No valid themes found, retrying (attempt {attempt + 1}/{max_retries})")
+                        continue
+                    return self._fallback_themes(data_result)
+                
+            except Exception as e:
+                self.logger.error(f"Error in theme identification (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    continue
                 return self._fallback_themes(data_result)
-            
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            self.logger.warning(f"JSON parsing error in theme identification: {str(e)}")
-            return self._fallback_themes(data_result)
-        except Exception as e:
-            self.logger.error(f"Error in theme identification: {str(e)}")
-            return self._fallback_themes(data_result)
+        
+        # If all retries failed
+        self.logger.error(f"All {max_retries} attempts failed for theme identification")
+        return self._fallback_themes(data_result)
     
     def _fallback_themes(self, data_result: Dict) -> List[Dict]:
         """Provide fallback themes when AI analysis fails."""
@@ -302,19 +410,53 @@ class ResearchEngine:
         Each conflict should have: conflict_type, description, sources_involved, severity
         
         If no conflicts found, return empty array: []
+        
+        IMPORTANT: Respond ONLY with valid JSON. Do not include any explanatory text before or after the JSON.
         """
         
-        try:
-            response = await self.gemini_client.generate_response(prompt)
-            if not response.strip():
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = await self.gemini_client.generate_response(prompt)
+                
+                conflicts = await self._parse_json_response(
+                    response, 
+                    expected_type="array", 
+                    fallback_value=None,
+                    method_name="conflict_identification"
+                )
+                
+                if conflicts is None:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"Conflict identification failed, retrying (attempt {attempt + 1}/{max_retries})")
+                        continue
+                    return []
+                
+                # Validate each conflict has required fields (if any conflicts exist)
+                valid_conflicts = []
+                for conflict in conflicts:
+                    if isinstance(conflict, dict) and all(key in conflict for key in ['conflict_type', 'description', 'sources_involved', 'severity']):
+                        valid_conflicts.append(conflict)
+                    else:
+                        self.logger.warning(f"Invalid conflict structure: {conflict}")
+                
+                # Return valid conflicts (could be empty list, which is valid)
+                if len(conflicts) == 0:
+                    self.logger.info("No conflicts identified in the data")
+                else:
+                    self.logger.info(f"Successfully identified {len(valid_conflicts)} valid conflicts out of {len(conflicts)} total")
+                
+                return valid_conflicts
+                
+            except Exception as e:
+                self.logger.error(f"Error in conflict identification (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    continue
                 return []
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            self.logger.warning(f"JSON parsing error in conflict identification: {str(e)}")
-            return []
-        except Exception as e:
-            self.logger.error(f"Error in conflict identification: {str(e)}")
-            return []
+        
+        # If all retries failed
+        self.logger.error(f"All {max_retries} attempts failed for conflict identification")
+        return []
     
     async def _create_contextual_summaries(self, intent_result: Dict, data_result: Dict) -> Dict:
         """Create summaries based on user context and intent."""
@@ -358,19 +500,17 @@ class ResearchEngine:
         
         Include comparison tables and key differences.
         Return as JSON with comparison_table and key_differences keys.
+        
+        IMPORTANT: Respond ONLY with valid JSON. Do not include any explanatory text before or after the JSON.
         """
         
-        try:
-            response = await self.gemini_client.generate_response(prompt)
-            if not response.strip():
-                return {"comparison_table": [], "key_differences": []}
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            self.logger.warning(f"JSON parsing error in comparison generation: {str(e)}")
-            return {"comparison_table": [], "key_differences": []}
-        except Exception as e:
-            self.logger.error(f"Error in comparison generation: {str(e)}")
-            return {"comparison_table": [], "key_differences": []}
+        response = await self.gemini_client.generate_response(prompt)
+        return await self._parse_json_response(
+            response, 
+            expected_type="object", 
+            fallback_value={"comparison_table": [], "key_differences": []},
+            method_name="comparison_generation"
+        )
     
     async def _generate_timeline(self, data_result: Dict) -> List[Dict]:
         """Generate timeline of events."""
@@ -381,19 +521,17 @@ class ResearchEngine:
         
         Return as a JSON array of timeline events with date and description.
         If no chronological events found, return empty array: []
+        
+        IMPORTANT: Respond ONLY with valid JSON. Do not include any explanatory text before or after the JSON.
         """
         
-        try:
-            response = await self.gemini_client.generate_response(prompt)
-            if not response.strip():
-                return []
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            self.logger.warning(f"JSON parsing error in timeline generation: {str(e)}")
-            return []
-        except Exception as e:
-            self.logger.error(f"Error in timeline generation: {str(e)}")
-            return []
+        response = await self.gemini_client.generate_response(prompt)
+        return await self._parse_json_response(
+            response, 
+            expected_type="array", 
+            fallback_value=[],
+            method_name="timeline_generation"
+        )
     
     async def _generate_pros_cons(self, data_result: Dict) -> Dict:
         """Generate pros and cons analysis."""
@@ -404,19 +542,17 @@ class ResearchEngine:
         
         Return structured pros and cons with supporting evidence as JSON.
         Format: {{"pros": [], "cons": []}}
+        
+        IMPORTANT: Respond ONLY with valid JSON. Do not include any explanatory text before or after the JSON.
         """
         
-        try:
-            response = await self.gemini_client.generate_response(prompt)
-            if not response.strip():
-                return {"pros": [], "cons": []}
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            self.logger.warning(f"JSON parsing error in pros/cons generation: {str(e)}")
-            return {"pros": [], "cons": []}
-        except Exception as e:
-            self.logger.error(f"Error in pros/cons generation: {str(e)}")
-            return {"pros": [], "cons": []}
+        response = await self.gemini_client.generate_response(prompt)
+        return await self._parse_json_response(
+            response, 
+            expected_type="object", 
+            fallback_value={"pros": [], "cons": []},
+            method_name="pros_cons_generation"
+        )
     
     async def _assess_data_quality(self, data_result: Dict) -> Dict:
         """Assess the quality and reliability of gathered data."""
