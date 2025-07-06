@@ -266,11 +266,7 @@ The comprehensive research report has been saved and is ready for review.
             
             self.console.print(Panel(Markdown(summary_panel), title="Report Summary", border_style="blue"))
         
-        # Ask if user wants to view the report
-        if Confirm.ask("\n[bold]Would you like to view the report now?[/bold]"):
-            await self._display_report(report.get("file_path"))
-        
-        # Ask about next steps
+        # Ask about next steps directly (no automatic report display)
         next_action = Prompt.ask(
             "\n[bold]What would you like to do next?[/bold]",
             choices=["menu", "new", "view", "save"],
