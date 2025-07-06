@@ -71,10 +71,14 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-sessions/
-reports/
+sessions/*
+!sessions/.gitkeep
+reports/*
+!reports/.gitkeep
 logs/
 cache/
+test_sessions/
+test_reports/
 *.log
 
 # Backup files
