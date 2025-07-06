@@ -226,13 +226,13 @@ class DataGatherer:
                 page_data = await self.web_scraper.scrape_page(url)
                 
                 if page_data:
-                    scraped_data["scraped_pages"].append(page_data)
+                    scraped_data["scraped_pages"].append(page_data.to_dict())
                     scraped_data["depth_map"][url] = 1
                     
                     # Follow links up to max depth
                     if self.max_scraping_depth > 1:
                         followed_data = await self._follow_links(
-                            page_data.get("links", []), 
+                            page_data.links,  # Use the links attribute from ScrapedPage 
                             current_depth=1,
                             scraped_data=scraped_data
                         )
@@ -257,13 +257,13 @@ class DataGatherer:
             try:
                 page_data = await self.web_scraper.scrape_page(link)
                 if page_data:
-                    followed_data.append(page_data)
+                    followed_data.append(page_data.to_dict())
                     scraped_data["depth_map"][link] = current_depth + 1
                     
                     # Recursive follow if not at max depth
                     if current_depth + 1 < self.max_scraping_depth:
                         deeper_data = await self._follow_links(
-                            page_data.get("links", []),
+                            page_data.links,  # Use the links attribute from ScrapedPage
                             current_depth + 1,
                             scraped_data
                         )

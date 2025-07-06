@@ -25,6 +25,19 @@ class ScrapedPage:
     scrape_time: float
     success: bool
     error: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert ScrapedPage to JSON-serializable dictionary."""
+        return {
+            "url": self.url,
+            "title": self.title,
+            "content": self.content,
+            "links": self.links,
+            "metadata": self.metadata,
+            "scrape_time": self.scrape_time,
+            "success": self.success,
+            "error": self.error
+        }
 
 
 class WebScraper:
