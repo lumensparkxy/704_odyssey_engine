@@ -6,21 +6,21 @@ echo "🔍 Setting up Odyssey Engine - Deep Research AI"
 echo "================================================"
 
 # Check if Python 3.8+ is installed
-python_version=$(python3 --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
+python_version=$(python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
 required_version="3.8"
 
-if ! python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
+if ! python -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
     echo "❌ Error: Python 3.8 or higher is required"
-    echo "Current version: $(python3 --version)"
+    echo "Current version: $(python --version)"
     exit 1
 fi
 
-echo "✅ Python version check passed: $(python3 --version)"
+echo "✅ Python version check passed: $(python --version)"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
     echo "📦 Creating virtual environment..."
-    python3 -m venv venv
+    python -m venv venv
 fi
 
 # Activate virtual environment
