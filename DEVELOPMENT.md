@@ -4,41 +4,39 @@
 
 ### 1. Setup
 ```bash
-# Clone and setup
-git clone <repository>
+git clone <repository-url> odyssey-engine
 cd odyssey-engine
-
-# Run setup script
-./setup.sh
-
-# Or manual setup:
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
+pip install -r requirements.txt  # or: pip install -e .[dev]
 cp .env.example .env
 ```
 
+Optional: editable install enables script entry point (`odyssey`).
+
 ### 2. Configuration
-Edit `.env` file:
-```bash
+Minimal required value:
+```
 GEMINI_API_KEY=your_gemini_api_key_here
+```
+Common optional tuning:
+```
 CONFIDENCE_THRESHOLD=75
 MAX_SCRAPING_DEPTH=3
+MAX_SEARCH_RESULTS=10
+MAX_FOLLOW_UP_QUESTIONS=5
+REQUEST_TIMEOUT=30
 ```
+Placeholders not yet wired: `CACHE_PATH`, `LOG_LEVEL`.
 
 ### 3. Run
 ```bash
-# Interactive CLI
-python main.py
-
-# Direct query
-python main.py --query "Your research question"
-
-# Continue session
-python main.py --session session_id
-
-# Programmatic usage
-python example.py
+python main.py                # interactive
+python main.py --query "Your research question"  # one-shot
+python main.py --session <session_id>            # continue
+python simple_research.py     # minimal scripted
+python new_research.py        # advanced scripted
+python example.py             # programmatic sample
 ```
 
 ## Architecture Overview
@@ -96,6 +94,12 @@ Creates comprehensive markdown reports with structured sections.
 - Detailed Analysis (by question/theme)
 - Contradictory Viewpoints
 - Bibliography/Sources
+
+### 5. Confidence Scorer (`src/utils/confidence.py`)
+Scores each stage + aggregate weighted result with recommendations.
+
+### 6. Gemini Client (`src/utils/gemini_client.py`)
+Wraps generate + grounded search. Handles fallback when grounding fails.
 
 ## Data Flow
 
@@ -168,6 +172,7 @@ self.max_depth = int(os.getenv("MAX_SCRAPING_DEPTH", "3"))
 ```
 
 ### 4. Logging
+Currently initializes basic logging to `logs/odyssey.log`. Planned enhancement: structured JSON logging and dynamic level from `LOG_LEVEL`.
 Structured logging throughout:
 ```python
 self.logger.info(f"Starting research session {session_id}")
@@ -179,27 +184,15 @@ self.logger.error(f"Failed to process: {error}")
 
 ### Unit Tests
 ```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_engine.py
-
-# Run with coverage
-pytest --cov=src
-
-# Run async tests
-pytest -v tests/test_async_operations.py
+pytest -m "not integration"            # fast unit tests (mocks)
+pytest -m integration -s               # real API (cost/time)
+pytest --cov=src --cov-report=term-missing
 ```
+
+Markers declared in `pyproject.toml`. Avoid running integration in CI without secrets.
 
 ### Integration Tests
-```bash
-# Test full pipeline (requires API key)
-pytest tests/test_integration.py
-
-# Test with mock data
-pytest tests/test_mocked_integration.py
-```
+Use `-m integration`. They call the real Gemini API; skip automatically if no key present.
 
 ### Test Structure
 ```python
@@ -221,10 +214,8 @@ async def test_research_pipeline():
 
 ## Debugging
 
-### 1. Enable Debug Logging
-```python
-logging.basicConfig(level=logging.DEBUG)
-```
+### 1. Enable Verbose Logging
+Set `logging.basicConfig(level=logging.DEBUG)` early or set environment then patch code until dynamic level is implemented.
 
 ### 2. Session Inspection
 ```python
@@ -257,7 +248,7 @@ async with aiohttp.ClientSession() as session:
         return await response.text()
 ```
 
-### 3. Caching
+### 3. Caching (Planned)
 ```python
 # Cache expensive operations
 @lru_cache(maxsize=128)
@@ -320,7 +311,7 @@ class SentimentAnalyzer:
 python main.py
 ```
 
-### 2. Docker Deployment
+### 2. Docker Deployment (Example)
 ```dockerfile
 FROM python:3.11-slim
 COPY . /app
@@ -348,8 +339,19 @@ CMD ["python", "main.py"]
 
 ## Resources
 
-- [Gemini API Documentation](https://ai.google.dev/docs)
-- [AsyncIO Documentation](https://docs.python.org/3/library/asyncio.html)
-- [Rich Terminal Library](https://rich.readthedocs.io/)
-- [BeautifulSoup Documentation](https://www.crummy.com/software/BeautifulSoup/bs4/doc/)
-- [aiohttp Documentation](https://docs.aiohttp.org/)
+- [Gemini API (Google AI)](https://ai.google.dev/docs)
+- [AsyncIO](https://docs.python.org/3/library/asyncio.html)
+- [Rich](https://rich.readthedocs.io/)
+- [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/bs4/doc/)
+- [aiohttp](https://docs.aiohttp.org/)
+
+## Roadmap (High-Level)
+
+- Document parsing (PDF/HTML normalization) integration
+- Config-driven logging level & structured JSON logs
+- Caching layer keyed by normalized query intent
+- Multi-format export (HTML/PDF)
+- Pluggable analysis modules (trend, risk, sentiment)
+
+---
+Maintainers: Update this guide when adding configuration flags, changing session schema, or introducing new pipeline stages.

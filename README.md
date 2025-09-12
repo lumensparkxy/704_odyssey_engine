@@ -1,137 +1,230 @@
 # Odyssey Engine - Deep Research Engine
 
-A Python-based command-line tool that provides in-depth answers to user queries by gathering information from various sources, analyzing it, and generating comprehensive reports.
+AI-powered asynchronous research pipeline that transforms a plain-language question into a structured, cited, confidence-scored markdown report. It performs intent clarification, multi‑source data gathering (internal knowledge, Google grounded search, web scraping), synthesis, conflict detection, and structured report generation.
 
 ## Overview
 
-The Odyssey Engine is designed for curious minds who want to go deeper than obvious answers. It uses advanced AI (Gemini Pro 2.5) to conduct thorough research by:
+Pipeline stages:
+1. Intent Analysis → clarifying dialogue / missing info detection
+2. Data Gathering → internal knowledge, grounded Google search, (placeholder) documents, controlled-depth web scraping
+3. Analysis & Synthesis → themes, conflicts, contextual summaries (comparison / timeline / pros & cons)
+4. Report Generation → structured markdown (Executive Summary, Key Findings, Detailed Analysis, Contradictory Viewpoints, Bibliography)
+5. Confidence Scoring → per-stage + overall weighted confidence with recommendations
 
-- Understanding user intent through conversational interviews
-- Gathering information from multiple sources (Google Search, web scraping, documents)
-- Analyzing and compiling comprehensive reports
-- Providing traceability and session storage
+All intermediate artifacts, confidence metrics, and final report metadata are persisted as JSON session files for auditability and reproducibility.
 
-## Features
+## Key Features
 
-- **Multi-turn Conversational Interface**: Clarifies user intent through follow-up questions
-- **Multiple Data Sources**: Google Search, web scraping, document analysis
-- **Confidence Scoring**: LLM-based confidence assessment
-- **Comprehensive Reports**: Markdown reports with executive summary, key findings, and citations
-- **Session Storage**: JSON-based storage of all research sessions and intermediate steps
-- **Web Scraping**: Intelligent link following up to 3 levels deep
+- **Adaptive Clarification**: Multi-turn intent interrogation with fallback handling
+- **Prioritized Multi-Source Gathering**: Internal knowledge → grounded Google search → (extensible) documents → depth‑limited scraping
+- **Conflict & Theme Detection**: Identifies contradictory viewpoints and synthesizes themes with fallback logic
+- **Confidence Framework**: Stage + overall scoring (data quality, reliability, coverage, synthesis, structure)
+- **Structured Markdown Reports**: Reproducible, sectioned, and file-named with timestamp + query snippet
+- **Session Persistence**: Versioned JSON per session + optional backups
+- **CLI & Direct Scripts**: Rich interactive CLI plus `simple_research.py` & `new_research.py` automation scripts
+- **Resilience**: Robust JSON parsing retries + fallbacks when LLM output malformed
+- **Extensibility**: Clear extension points for new data sources, analysis modules, and report formats
 
 ## Installation
 
+### 1. Clone & Environment
 ```bash
-# Clone the repository
-git clone <repository-url>
+git clone <repository-url> odyssey-engine
 cd odyssey-engine
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+pip install -r requirements.txt  # or: pip install -e .
 cp .env.example .env
-# Edit .env with your Gemini API key
 ```
+
+### 2. Configure API Key
+Edit `.env`:
+```
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+### 3. Verify Setup
+```bash
+python -m pytest -q  # optional quick sanity (most tests mock external calls)
+python main.py --query "Test the pipeline works"
+```
+
+> Using `pip install -e .` enables editable mode referencing `pyproject.toml`.
 
 ## Quick Start
 
 ```bash
-# Start a research session
+# Interactive guided session
 python main.py
 
-# Or with a direct query
-python main.py --query "Compare the market share of EVs in Europe vs. North America for 2023"
+# Direct non-interactive (one-shot) query
+python main.py --query "Compare EV market share in Europe vs North America 2023"
+
+# Continue a pending session (needs clarification)
+python main.py --session <session_id>
+
+# Use simplified script (minimal features)
+python simple_research.py
+
+# Use full direct script with predefined clarification responses
+python new_research.py
 ```
 
-## Project Structure
+Generate a new report in `reports/` and a session JSON in `sessions/`.
+
+## Project Structure (Core)
 
 ```
-odyssey-engine/
-├── src/
-│   ├── core/
-│   │   ├── engine.py          # Main research engine
-│   │   ├── intent_analyzer.py # User intent analysis
-│   │   ├── data_gatherer.py   # Information gathering
-│   │   └── report_generator.py # Report generation
-│   ├── utils/
-│   │   ├── gemini_client.py   # Gemini API client
-│   │   ├── web_scraper.py     # Web scraping utilities
-│   │   ├── confidence.py      # Confidence scoring
-│   │   └── storage.py         # Session storage
-│   └── cli/
-│       └── interface.py       # Command-line interface
-├── sessions/                  # Stored research sessions
-├── reports/                   # Generated reports
-├── tests/                     # Unit tests
-├── config/                    # Configuration files
-├── main.py                    # Entry point
-├── requirements.txt           # Dependencies
-└── .env.example              # Environment variables template
+src/
+	core/
+		engine.py           # Orchestrates pipeline
+		intent_analyzer.py  # Clarification & intent modeling
+		data_gatherer.py    # Multi-source acquisition & consolidation
+		report_generator.py # Sectioned markdown report assembly
+	utils/
+		gemini_client.py    # Gemini 2.5 API + grounded search wrapper
+		web_scraper.py      # Depth-controlled async scraping & extraction
+		confidence.py       # Stage + aggregate scoring logic
+		storage.py          # Async JSON session + backup management
+	cli/
+		interface.py        # Rich interactive terminal UI
+simple_research.py      # Minimal direct usage script
+new_research.py         # Advanced scripted research with overrides
+example.py              # Programmatic usage pattern
+tests/                  # Unit + integration markers
+reports/                # Generated markdown reports
+sessions/               # Persisted session JSON
+logs/                   # Runtime logs
 ```
 
 ## Configuration
 
-Set the following environment variables in `.env`:
+Environment variables (see `.env.example` for full list):
 
-```
-GEMINI_API_KEY=your_gemini_api_key_here
-CONFIDENCE_THRESHOLD=75
-MAX_SCRAPING_DEPTH=3
-SESSION_STORAGE_PATH=./sessions
-REPORTS_OUTPUT_PATH=./reports
-```
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| GEMINI_API_KEY | Gemini API authentication | (required) |
+| GEMINI_MODEL | Model name | gemini-2.5-pro |
+| CONFIDENCE_THRESHOLD | % required to skip clarification / accept overall | 75 |
+| MAX_FOLLOW_UP_QUESTIONS | Clarification question cap | 5 |
+| MAX_SCRAPING_DEPTH | Recursive link-follow depth | 3 |
+| MAX_SEARCH_RESULTS | Limit initial search URLs considered | 10 |
+| SESSION_STORAGE_PATH | Session JSON directory | ./sessions |
+| REPORTS_OUTPUT_PATH | Report output directory | ./reports |
+| REQUEST_TIMEOUT | Seconds per remote operation | 30 |
+| MAX_CONCURRENT_REQUESTS | Parallel HTTP fetches (scraper) | 5 |
+| USER_AGENT | Scraper UA string | OdysseyEngine/1.0 |
+| DEFAULT_REPORT_TONE | Report tone (e.g. formal_accessible) | formal_accessible |
+| INCLUDE_CONFIDENCE_SCORES | Embed per-stage score note | true |
+| INCLUDE_SOURCE_RELIABILITY | Show reliability metrics | true |
+| LOG_LEVEL | (Not yet wired; future logging config) | INFO |
+| CACHE_PATH | (Reserved for future caching) | ./cache |
 
-## Usage Examples
+Unused / planned keys (`LOG_LEVEL`, `CACHE_PATH`) are currently placeholders and safe to omit.
 
-### Basic Research Query
+## CLI Usage Patterns
+
+| Action | Command |
+|--------|---------|
+| Interactive start | `python main.py` |
+| One-shot query | `python main.py --query "How does CRISPR base editing differ from prime editing"` |
+| Continue a session | `python main.py --session <session_id>` |
+| Non-interactive scripted (minimal) | `python simple_research.py` |
+| Non-interactive scripted (advanced) | `python new_research.py` |
+
+Session IDs are printed/logged after initialization; JSON lives in `sessions/`.
+
+## Development & Quality
+
+Install dev extras:
 ```bash
-python main.py --query "What are the latest developments in quantum computing?"
+pip install -e .[dev]
 ```
 
-### Interactive Mode
+Run tests (unit only):
 ```bash
-python main.py --interactive
+pytest -m "not integration" -q
 ```
 
-### Load Previous Session
+Run integration (real API calls – costs/time):
 ```bash
-python main.py --session session_id_12345
+pytest -m integration -s
 ```
 
-## Development
-
-### Running Tests
+Formatting & static analysis:
 ```bash
-python -m pytest tests/
-```
-
-### Code Quality
-```bash
-# Format code
-black src/
-isort src/
-
-# Type checking
+black src/ && isort src/
 mypy src/
-
-# Linting
 pylint src/
 ```
 
-## License
+Recommended pre-commit hook script can be added later (see Roadmap).
 
-MIT License - see LICENSE file for details.
+### Programmatic Usage (Example)
+```python
+from core.engine import ResearchEngine
+import asyncio
+
+async def main():
+	engine = ResearchEngine({"GEMINI_API_KEY": "..."})
+	session_id = await engine.start_research_session("Compare LLM fine-tuning vs RAG trade-offs")
+	result = await engine.conduct_research(session_id)
+	print(result["report"]["file_path"])  # path to markdown
+
+asyncio.run(main())
+```
+
+## Data & Session Model
+
+Each session JSON stores per-stage status + confidence and final report metadata enabling reproducibility & diffing.
+
+## Confidence Scoring
+Weighted combination of stage scores (intent 15%, data 35%, analysis 30%, report 20%). Recommendations surface weakest stage when below threshold.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| Immediate exit: missing API key | `.env` not loaded | Confirm file + export in shell or use `python -m dotenv.main set` |
+| Stuck at data gathering | Network / grounding latency | Increase `REQUEST_TIMEOUT` or reduce `MAX_SEARCH_RESULTS` |
+| Empty / malformed JSON themes | LLM formatting variance | Enable `json_debug_logging` (set in config dict) or rely on fallback themes |
+| Low overall confidence | Sparse sources / shallow content | Increase scraping depth or refine query specificity |
+| Few or no sources in bibliography | Grounding disabled/failing | Check logs for grounding fallback warnings |
+
+## Security & Ethics
+
+- Never commit real API keys; use `.env` in `.gitignore`.
+- Web scraping respects depth + domain filtering; still ensure compliance with target site ToS.
+- Logs intentionally exclude API keys.
+
+## Roadmap (Planned Enhancements)
+
+- Document ingestion (PDF / Markdown parsing)
+- Caching layer (`CACHE_PATH`) for repeated queries
+- Configurable logging levels & structured JSON logs
+- Additional report export formats (HTML / PDF)
+- Pluggable analyzers (sentiment, risk, trend modeling)
+- CLI subcommands for session cleanup & export
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+1. Fork & branch (`feature/xyz`)
+2. Add/adjust tests (avoid real API in unit scope)
+3. Ensure formatting & type checks pass
+4. Update docs / README sections you affect
+5. Open PR with clear summary & rationale
 
-## Support
+## License
 
-For issues and questions, please open an issue on the GitHub repository.
+MIT License – see `LICENSE`.
+
+## Support & Issues
+
+Open a GitHub issue with:
+- Reproduction steps
+- Session ID (if relevant)
+- Stack trace excerpt (omit sensitive info)
+- Environment (Python version, OS, model override)
+
+---
+*Odyssey Engine – Deep Research AI*

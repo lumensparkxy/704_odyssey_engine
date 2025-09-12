@@ -95,6 +95,10 @@ Both scripts require the same environment setup as the main application:
    GEMINI_API_KEY=your_api_key_here
    ```
 
+   Optional (advanced) variables such as `CONFIDENCE_THRESHOLD`, `MAX_SCRAPING_DEPTH`, `MAX_SEARCH_RESULTS`, and `DEFAULT_REPORT_TONE` can refine behavior. Placeholders `CACHE_PATH` and `LOG_LEVEL` are not yet active.
+
+   Refer to the main `README.md` for the canonical environment variable list and roadmap items.
+
 ## Example Research Queries
 
 Here are some example research queries you can use:
