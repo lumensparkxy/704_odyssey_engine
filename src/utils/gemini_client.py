@@ -16,6 +16,7 @@ from google.genai.types import (
     GenerateContentConfig,
     GoogleSearch,
     Tool,
+    ThinkingConfig,
 )
 
 
@@ -27,7 +28,7 @@ class GeminiClient:
         self.config = config
         self.api_key = config.get(
             "GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-        self.model_name = config.get("GEMINI_MODEL", "gemini-2.5-pro")
+        self.model_name = config.get("GEMINI_MODEL", "gemini-3-pro-preview")
         self.logger = logging.getLogger(__name__)
 
         if not self.api_key:
@@ -35,26 +36,27 @@ class GeminiClient:
                 "GEMINI_API_KEY not found in config or environment variables")
 
         # Create the client using the new API
-        self.client = genai.Client(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key, http_options={
+                                   'api_version': 'v1alpha'})
 
         # Safety settings using new API structure
-        # Note: Using BLOCK_MEDIUM_AND_ABOVE for security while allowing research content
+        # Note: Using BLOCK_NONE for maximum research flexibility
         self.safety_settings = [
             types.SafetySetting(
                 category='HARM_CATEGORY_HATE_SPEECH',
-                threshold='BLOCK_MEDIUM_AND_ABOVE',
+                threshold='BLOCK_NONE',
             ),
             types.SafetySetting(
                 category='HARM_CATEGORY_DANGEROUS_CONTENT',
-                threshold='BLOCK_MEDIUM_AND_ABOVE',
+                threshold='BLOCK_NONE',
             ),
             types.SafetySetting(
                 category='HARM_CATEGORY_SEXUALLY_EXPLICIT',
-                threshold='BLOCK_MEDIUM_AND_ABOVE',
+                threshold='BLOCK_NONE',
             ),
             types.SafetySetting(
                 category='HARM_CATEGORY_HARASSMENT',
-                threshold='BLOCK_MEDIUM_AND_ABOVE',
+                threshold='BLOCK_NONE',
             ),
         ]
 
@@ -72,10 +74,12 @@ class GeminiClient:
         try:
             # Configure generation parameters using the new API
             config = types.GenerateContentConfig(
-                temperature=kwargs.get("temperature", 0.5),
+                temperature=kwargs.get("temperature", 1.0),
                 top_p=kwargs.get("top_p", 1.0),
                 max_output_tokens=kwargs.get("max_tokens", 8192),
-                safety_settings=self.safety_settings
+                safety_settings=self.safety_settings,
+                thinking_config=types.ThinkingConfig(
+                    include_thoughts=True, thinking_level="high")
             )
 
             # Generate response using the new async API
@@ -107,11 +111,13 @@ class GeminiClient:
                     # Use actual Google Search grounding
                     # Note: max_remote_calls is not configurable via GoogleSearch() parameters
                     # It's an internal library setting that defaults to 10
-                    config = GenerateContentConfig(
+                    config = types.GenerateContentConfig(
                         tools=[Tool(google_search=GoogleSearch())],
-                        temperature=0.5,
+                        temperature=1.0,
                         max_output_tokens=8192,
-                        safety_settings=self.safety_settings
+                        safety_settings=self.safety_settings,
+                        thinking_config=types.ThinkingConfig(
+                            include_thoughts=True, thinking_level="high")
                     )
 
                     response = await self.client.aio.models.generate_content(

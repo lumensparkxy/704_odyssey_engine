@@ -43,6 +43,7 @@ class IntentAnalyzer:
             return {
                 "needs_clarification": False,
                 "intent": intent_analysis,
+                "context": self._derive_context(intent_analysis),
                 "confidence": intent_analysis.get("confidence", 80),
                 "research_questions": intent_analysis.get("research_questions", [query]),
                 "key_entities": intent_analysis.get("key_entities", []),
@@ -62,12 +63,14 @@ class IntentAnalyzer:
                 "needs_clarification": True,
                 "questions": questions,
                 "partial_intent": intent_analysis,
+                "context": self._derive_context(intent_analysis),
                 "confidence": intent_analysis.get("confidence", 0)
             }
 
         return {
             "needs_clarification": False,
             "intent": intent_analysis,
+            "context": self._derive_context(intent_analysis),
             "confidence": intent_analysis.get("confidence", 100),
             "research_questions": intent_analysis.get("research_questions", [query]),
             "key_entities": intent_analysis.get("key_entities", []),
@@ -118,7 +121,10 @@ class IntentAnalyzer:
         For food/breakfast research, focus on nutritional value, health benefits, convenience, and general recommendations.
         """
 
-        response = await self.gemini_client.generate_response(prompt)
+        # Use grounding to ensure the model knows about recent entities/models
+        result = await self.gemini_client.generate_with_grounding(prompt)
+        response = result["response"]
+
         try:
             return json.loads(response)
         except json.JSONDecodeError:
@@ -172,6 +178,8 @@ class IntentAnalyzer:
         8. confidence: Confidence in this analysis (0-100)
         9. missing_information: What key information is still needed
         
+        IMPORTANT: Use Google Search to verify if any mentioned entities (like model versions, products, events) exist, even if they are very recent. Do not assume they are hypothetical without checking.
+        
         Example:
         {{
             "research_type": "comparison",
@@ -186,7 +194,10 @@ class IntentAnalyzer:
         }}
         """
 
-        response = await self.gemini_client.generate_response(prompt)
+        # Use grounding to ensure the model knows about recent entities/models
+        result = await self.gemini_client.generate_with_grounding(prompt)
+        response = result["response"]
+
         try:
             return json.loads(response)
         except json.JSONDecodeError:
@@ -342,6 +353,18 @@ class IntentAnalyzer:
             })
 
         return questions
+
+    def _derive_context(self, intent_analysis: Dict[str, Any]) -> Dict[str, bool]:
+        """Derive context flags from intent analysis."""
+        research_type = intent_analysis.get("research_type", "general")
+        output_preferences = intent_analysis.get("output_preferences", [])
+
+        return {
+            "comparison_needed": research_type == "comparison" or "comparison" in output_preferences,
+            "timeline_needed": research_type == "timeline" or "timeline" in output_preferences,
+            "pros_cons_needed": research_type == "pros_cons" or "pros_cons" in output_preferences,
+            "detailed_report": "detailed" in intent_analysis.get("scope", "broad")
+        }
 
     async def get_intent_confidence(self, intent_analysis: Dict[str, Any]) -> float:
         """Get confidence score for intent analysis."""
