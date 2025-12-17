@@ -40,11 +40,11 @@ class OdysseyADKCLI:
         """Initialize the ADK CLI."""
         self.console = Console()
         self.config = self._load_config()
-        
+
         # ADK services
         self.session_service = InMemorySessionService()
         self.runner: Optional[Runner] = None
-        
+
         # User tracking
         self.user_id = f"user_{uuid.uuid4().hex[:8]}"
 
@@ -62,17 +62,17 @@ class OdysseyADKCLI:
         try:
             self._show_welcome()
             await self._check_configuration()
-            
+
             # Initialize ADK Runner
             self.runner = Runner(
                 app_name=self.APP_NAME,
                 agent=root_agent,
                 session_service=self.session_service,
             )
-            
+
             async with self.runner:
                 await self._main_menu()
-                
+
         except KeyboardInterrupt:
             self.console.print("\n[yellow]👋 Goodbye![/yellow]")
         except Exception as e:
@@ -106,14 +106,17 @@ Let's start your research journey!
             self.console.print("Example: GEMINI_API_KEY=your_api_key_here")
             sys.exit(1)
 
-        self.console.print("[green]✅ Configuration loaded successfully[/green]")
-        self.console.print(f"[dim]Using ADK with agent: {root_agent.name}[/dim]")
+        self.console.print(
+            "[green]✅ Configuration loaded successfully[/green]")
+        self.console.print(
+            f"[dim]Using ADK with agent: {root_agent.name}[/dim]")
 
     async def _main_menu(self):
         """Show main menu and handle user choices."""
         while True:
             self.console.print("\n" + "=" * 60)
-            self.console.print("[bold blue]🔍 Odyssey Engine - Main Menu[/bold blue]")
+            self.console.print(
+                "[bold blue]🔍 Odyssey Engine - Main Menu[/bold blue]")
             self.console.print("=" * 60)
 
             options = [
@@ -141,17 +144,20 @@ Let's start your research journey!
             elif choice == "4":
                 self._show_help()
             elif choice == "5":
-                self.console.print("[yellow]👋 Thank you for using Odyssey Engine![/yellow]")
+                self.console.print(
+                    "[yellow]👋 Thank you for using Odyssey Engine![/yellow]")
                 break
 
     async def _start_new_research(self):
         """Start a new research session using ADK Runner."""
-        self.console.print("\n[bold blue]🚀 Starting New Research Session[/bold blue]")
+        self.console.print(
+            "\n[bold blue]🚀 Starting New Research Session[/bold blue]")
 
         # Get research query
         query = self._get_research_query()
         if not query.strip():
-            self.console.print("[red]❌ Please provide a research question.[/red]")
+            self.console.print(
+                "[red]❌ Please provide a research question.[/red]")
             return
 
         # Create ADK session
@@ -171,10 +177,10 @@ Let's start your research journey!
 
         # Run the research pipeline
         self.console.print("\n[blue]🔄 Running research pipeline...[/blue]")
-        
+
         events_collected = []
         final_response = None
-        
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -182,7 +188,7 @@ Let's start your research journey!
             transient=True
         ) as progress:
             task = progress.add_task("Processing...", total=None)
-            
+
             try:
                 async for event in self.runner.run_async(
                     user_id=self.user_id,
@@ -190,26 +196,31 @@ Let's start your research journey!
                     new_message=user_message,
                 ):
                     events_collected.append(event)
-                    
+
                     # Update progress based on event
                     if hasattr(event, 'author') and event.author:
                         agent_name = event.author
                         if "Intent" in agent_name:
-                            progress.update(task, description="📋 Analyzing research intent...")
+                            progress.update(
+                                task, description="📋 Analyzing research intent...")
                         elif "DataGathering" in agent_name or "Parallel" in agent_name:
-                            progress.update(task, description="🔍 Gathering data from sources...")
+                            progress.update(
+                                task, description="🔍 Gathering data from sources...")
                         elif "Analysis" in agent_name:
-                            progress.update(task, description="🧠 Analyzing findings...")
+                            progress.update(
+                                task, description="🧠 Analyzing findings...")
                         elif "Report" in agent_name:
-                            progress.update(task, description="📝 Generating report...")
-                    
+                            progress.update(
+                                task, description="📝 Generating report...")
+
                     # Capture final response
                     if hasattr(event, 'content') and event.content:
                         final_response = event
-                        
+
             except Exception as e:
                 progress.stop()
-                self.console.print(f"[red]❌ Error during research: {str(e)}[/red]")
+                self.console.print(
+                    f"[red]❌ Error during research: {str(e)}[/red]")
                 return
 
         # Show results
@@ -228,12 +239,14 @@ Let's start your research journey!
             return Prompt.ask("\n[bold]What would you like to research?[/bold]")
 
         if mode == "file":
-            path_str = Prompt.ask("\n[bold]Path to a prompt file (.txt/.md)[/bold]")
+            path_str = Prompt.ask(
+                "\n[bold]Path to a prompt file (.txt/.md)[/bold]")
             file_path = Path(path_str).expanduser()
             try:
                 return file_path.read_text(encoding="utf-8")
             except Exception as e:
-                self.console.print(f"[red]❌ Could not read file: {file_path}[/red]")
+                self.console.print(
+                    f"[red]❌ Could not read file: {file_path}[/red]")
                 return ""
 
         # multiline
@@ -275,17 +288,19 @@ Let's start your research journey!
             user_id=self.user_id,
             session_id=session.id,
         )
-        
+
         state = updated_session.state if updated_session else {}
 
         # Show summary panel
         summary_parts = []
-        
+
         if state.get("intent_result"):
             intent = state.get("intent_result", {})
             if isinstance(intent, dict):
-                summary_parts.append(f"**Research Type:** {intent.get('research_type', 'N/A')}")
-                summary_parts.append(f"**Domain:** {intent.get('domain', 'N/A')}")
+                summary_parts.append(
+                    f"**Research Type:** {intent.get('research_type', 'N/A')}")
+                summary_parts.append(
+                    f"**Domain:** {intent.get('domain', 'N/A')}")
 
         if state.get("report_metadata"):
             metadata = state.get("report_metadata", {})
@@ -309,14 +324,15 @@ Let's start your research journey!
                 for part in content.parts:
                     if hasattr(part, 'text') and part.text:
                         response_text += part.text
-                
+
                 if response_text:
                     # Truncate if too long for display
                     if len(response_text) > 2000:
-                        display_text = response_text[:2000] + "\n\n...[truncated]"
+                        display_text = response_text[:2000] + \
+                            "\n\n...[truncated]"
                     else:
                         display_text = response_text
-                        
+
                     self.console.print(Panel(
                         Markdown(display_text),
                         title="Research Output",
@@ -326,12 +342,12 @@ Let's start your research journey!
         # Ask about next steps
         self.console.print("\n[bold]Pipeline Stages Completed:[/bold]")
         self.console.print(f"  • Events processed: {len(events)}")
-        
+
         # Check for report
         report_path = None
         if state.get("report_metadata"):
             report_path = state["report_metadata"].get("file_path")
-        
+
         if report_path and Path(report_path).exists():
             if Confirm.ask("\n[bold]Would you like to view the generated report?[/bold]"):
                 await self._display_report(report_path)
@@ -369,7 +385,8 @@ Let's start your research journey!
         """View generated reports."""
         self.console.print("\n[bold blue]📄 Generated Reports[/bold blue]")
 
-        reports_path = Path(self.config.get("REPORTS_OUTPUT_PATH", "./reports"))
+        reports_path = Path(self.config.get(
+            "REPORTS_OUTPUT_PATH", "./reports"))
 
         if not reports_path.exists():
             self.console.print("[yellow]Reports directory not found.[/yellow]")
@@ -391,7 +408,8 @@ Let's start your research journey!
         for report_file in sorted(report_files, key=lambda x: x.stat().st_mtime, reverse=True):
             size_kb = report_file.stat().st_size // 1024
             modified_time = report_file.stat().st_mtime
-            modified_str = datetime.fromtimestamp(modified_time).strftime("%Y-%m-%d %H:%M")
+            modified_str = datetime.fromtimestamp(
+                modified_time).strftime("%Y-%m-%d %H:%M")
 
             table.add_row(
                 report_file.name,
@@ -412,7 +430,8 @@ Let's start your research journey!
 
     def _show_settings(self):
         """Show current settings and configuration."""
-        self.console.print("\n[bold blue]⚙️ Settings & Configuration[/bold blue]")
+        self.console.print(
+            "\n[bold blue]⚙️ Settings & Configuration[/bold blue]")
 
         config_panel = f"""
 **API Configuration:**

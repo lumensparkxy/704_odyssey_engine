@@ -30,11 +30,11 @@ from dotenv import load_dotenv
 )
 def main(adk: bool, query: str | None) -> None:
     """Odyssey Engine - Deep Research AI.
-    
+
     Run comprehensive research using Google ADK agents pipeline.
     """
     load_dotenv()
-    
+
     if adk:
         # ADK mode (default)
         from cli.adk_interface import OdysseyADKCLI

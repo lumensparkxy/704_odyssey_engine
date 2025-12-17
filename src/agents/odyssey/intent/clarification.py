@@ -44,7 +44,17 @@ class ConfidenceCheckerAgent(BaseAgent):
         confidence = 0
         if isinstance(intent_result, str):
             try:
-                parsed = json.loads(intent_result)
+                # Strip markdown code blocks if present
+                clean_result = intent_result.strip()
+                if clean_result.startswith("```json"):
+                    clean_result = clean_result[7:]  # Remove ```json
+                elif clean_result.startswith("```"):
+                    clean_result = clean_result[3:]  # Remove ```
+                if clean_result.endswith("```"):
+                    clean_result = clean_result[:-3]  # Remove trailing ```
+                clean_result = clean_result.strip()
+
+                parsed = json.loads(clean_result)
                 confidence = parsed.get("confidence", 0)
             except json.JSONDecodeError:
                 confidence = 0

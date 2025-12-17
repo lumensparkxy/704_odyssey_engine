@@ -4,6 +4,7 @@ Web Scraper Tool for ADK Agents.
 Wraps the WebScraper utility as an ADK FunctionTool for use by agents.
 """
 
+from src.utils.web_scraper import WebScraper
 import asyncio
 import sys
 import concurrent.futures
@@ -15,7 +16,6 @@ project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # Now we can import from src
-from src.utils.web_scraper import WebScraper
 
 
 def _run_async_in_thread(coro):
