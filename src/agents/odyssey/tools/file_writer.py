@@ -41,7 +41,7 @@ def save_report_to_file(
         # Clean query words for filename
         clean_words = re.sub(r'[^\w\s]', '', query_words.lower())
         clean_words = re.sub(r'\s+', '_', clean_words.strip())
-        
+
         # Limit to first 4-5 words
         word_parts = clean_words.split('_')[:5]
         query_part = '_'.join(word_parts)
@@ -89,23 +89,23 @@ def save_report_to_file(
 def get_report_path(query_words: str) -> str:
     """
     Get the expected path for a report without saving it.
-    
+
     Useful for previewing where a report would be saved.
-    
+
     Args:
         query_words: First few words from the research query
-        
+
     Returns:
         Expected file path as string
     """
     reports_dir = Path(os.getenv("REPORTS_OUTPUT_PATH", "./reports"))
-    
+
     clean_words = re.sub(r'[^\w\s]', '', query_words.lower())
     clean_words = re.sub(r'\s+', '_', clean_words.strip())
     word_parts = clean_words.split('_')[:5]
     query_part = '_'.join(word_parts)
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"research_report_{query_part}_{timestamp}.md"
-    
+
     return str(reports_dir / filename)

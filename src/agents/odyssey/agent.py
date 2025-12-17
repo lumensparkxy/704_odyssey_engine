@@ -32,6 +32,6 @@ root_agent = SequentialAgent(
         intent_clarification_loop,  # Phase 1: Intent with clarification loop
         data_gathering_pipeline,    # Phase 2: Parallel data gathering + consolidation
         analysis_agent,             # Phase 1: Analysis and synthesis
-        report_generation_pipeline, # Phase 3: Report generation and file saving
+        report_generation_pipeline,  # Phase 3: Report generation and file saving
     ],
 )

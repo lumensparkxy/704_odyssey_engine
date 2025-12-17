@@ -8,6 +8,6 @@ from .agent import report_generator_agent, report_finalizer_agent, report_genera
 
 __all__ = [
     "report_generator_agent",
-    "report_finalizer_agent", 
+    "report_finalizer_agent",
     "report_generation_pipeline",
 ]

@@ -1,17 +1,41 @@
 # Odyssey Engine - Deep Research Engine
 
-AI-powered asynchronous research pipeline that transforms a plain-language question into a structured, cited, confidence-scored markdown report. It performs intent clarification, multi‑source data gathering (internal knowledge, Google grounded search, web scraping), synthesis, conflict detection, and structured report generation.
+AI-powered asynchronous research pipeline that transforms a plain-language question into a structured, cited, confidence-scored markdown report. Built on **Google ADK (Agent Development Kit)** for multi-agent orchestration.
 
 ## Overview
 
-Pipeline stages:
-1. Intent Analysis → clarifying dialogue / missing info detection
-2. Data Gathering → internal knowledge, grounded Google search, (placeholder) documents, controlled-depth web scraping
-3. Analysis & Synthesis → themes, conflicts, contextual summaries (comparison / timeline / pros & cons)
-4. Report Generation → structured markdown (Executive Summary, Key Findings, Detailed Analysis, Contradictory Viewpoints, Bibliography)
-5. Confidence Scoring → per-stage + overall weighted confidence with recommendations
+Pipeline stages (ADK Agents):
+1. **Intent Analysis** (`IntentClarificationLoop`) → clarifying dialogue / missing info detection
+2. **Data Gathering** (`DataGatheringPipeline`) → parallel collection: internal knowledge, grounded Google search, web scraping
+3. **Analysis & Synthesis** (`AnalysisAgent`) → themes, conflicts, contextual summaries
+4. **Report Generation** (`ReportGenerationPipeline`) → structured markdown reports with file persistence
 
-All intermediate artifacts, confidence metrics, and final report metadata are persisted as JSON session files for auditability and reproducibility.
+All intermediate artifacts, confidence metrics, and final report metadata are persisted for auditability and reproducibility.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    OdysseyResearchPipeline (SequentialAgent)        │
+├─────────────────────────────────────────────────────────────────────┤
+│  1. IntentClarificationLoop (LoopAgent)                             │
+│     └─ IntentAnalyzerAgent → ConfidenceChecker → ShouldContinue     │
+│                                                                     │
+│  2. DataGatheringPipeline (SequentialAgent)                         │
+│     ├─ ParallelGatherers (ParallelAgent)                            │
+│     │   ├─ InternalKnowledgeAgent                                   │
+│     │   ├─ GoogleSearchAgent                                        │
+│     │   └─ WebScraperAgent                                          │
+│     └─ ConsolidatorAgent                                            │
+│                                                                     │
+│  3. AnalysisAgent (LlmAgent)                                        │
+│     └─ Theme identification, conflict detection, synthesis          │
+│                                                                     │
+│  4. ReportGenerationPipeline (SequentialAgent)                      │
+│     ├─ ReportGeneratorAgent                                         │
+│     └─ ReportFinalizerAgent + file_writer tool                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ## Key Features
 
@@ -54,20 +78,20 @@ python main.py --query "Test the pipeline works"
 ## Quick Start
 
 ```bash
-# Interactive guided session
+# Interactive ADK-powered session (default)
 python main.py
 
-# Direct non-interactive (one-shot) query
-python main.py --query "Compare EV market share in Europe vs North America 2023"
+# Use legacy (non-ADK) mode
+python main.py --legacy
 
-# Continue a pending session (needs clarification)
-python main.py --session <session_id>
+# Direct query (legacy mode)
+python main.py --legacy --query "Compare EV market share in Europe vs North America 2023"
+
+# Use ADK web interface for development
+cd src && adk web --port 8000
 
 # Use simplified script (minimal features)
 python scripts/simple_research.py
-
-# Use full direct script with predefined clarification responses
-python scripts/new_research.py
 ```
 
 Generate a new report in `reports/` and a session JSON in `sessions/`.
@@ -76,26 +100,33 @@ Generate a new report in `reports/` and a session JSON in `sessions/`.
 
 ```
 src/
-	core/
-		engine.py           # Orchestrates pipeline
-		intent_analyzer.py  # Clarification & intent modeling
-		data_gatherer.py    # Multi-source acquisition & consolidation
-		report_generator.py # Sectioned markdown report assembly
+	agents/                     # ADK Agent Definitions
+		odyssey/
+			agent.py            # Root SequentialAgent (pipeline orchestrator)
+			intent/             # Intent analysis agents
+			data_gathering/     # Parallel data gathering agents
+			analysis/           # Analysis agent
+			report/             # Report generation agents
+			tools/              # ADK tools (scraper, confidence, file_writer)
+	core/                       # Legacy engine (--legacy mode)
+		engine.py               # Orchestrates pipeline
+		intent_analyzer.py      # Clarification & intent modeling
+		data_gatherer.py        # Multi-source acquisition
+		report_generator.py     # Report assembly
 	utils/
-		gemini_client.py    # Gemini 2.5 API + grounded search wrapper
-		web_scraper.py      # Depth-controlled async scraping & extraction
-		confidence.py       # Stage + aggregate scoring logic
-		storage.py          # Async JSON session + backup management
+		gemini_client.py        # Gemini 2.5 API + grounded search wrapper
+		web_scraper.py          # Async scraping & extraction
+		confidence.py           # Confidence scoring logic
+		storage.py              # Session management
+		session_migration.py    # Legacy session utilities
 	cli/
-		interface.py        # Rich interactive terminal UI
-scripts/simple_research.py      # Minimal direct usage script
-scripts/new_research.py         # Advanced scripted research with overrides
-examples/programmatic_usage.py  # Programmatic usage pattern
-docs/                          # Development & usage guides
-tests/                  # Unit + integration markers
-reports/                # Generated markdown reports
-sessions/               # Persisted session JSON
-logs/                   # Runtime logs
+		adk_interface.py        # ADK-powered CLI (default)
+		interface.py            # Legacy Rich CLI (--legacy)
+		entrypoint.py           # CLI entrypoint
+scripts/                        # Automation scripts
+tests/                          # Unit + integration tests
+reports/                        # Generated markdown reports
+sessions/                       # Persisted session JSON
 ```
 
 ## Configuration
@@ -128,11 +159,10 @@ Unused / planned keys (`LOG_LEVEL`, `CACHE_PATH`) are currently placeholders and
 
 | Action | Command |
 |--------|---------|
-| Interactive start | `python main.py` |
-| One-shot query | `python main.py --query "How does CRISPR base editing differ from prime editing"` |
-| Continue a session | `python main.py --session <session_id>` |
-| Non-interactive scripted (minimal) | `python scripts/simple_research.py` |
-| Non-interactive scripted (advanced) | `python scripts/new_research.py` |
+| Interactive ADK mode (default) | `python main.py` |
+| Legacy interactive mode | `python main.py --legacy` |
+| ADK web interface | `cd src && adk web --port 8000` |
+| Non-interactive scripted | `python scripts/simple_research.py` |
 
 ### Entering multi-line prompts
 
