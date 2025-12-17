@@ -201,6 +201,9 @@ class ResearchEngine:
                 user_responses
             )
 
+            # Validate Stage 1 output before persisting / proceeding
+            self._validate_intent_result(intent_result)
+
             session_data["stages"]["intent_analysis"] = {
                 "status": "completed",
                 "result": intent_result,
@@ -229,6 +232,9 @@ class ResearchEngine:
 
             data_result = await self.data_gatherer.gather_data(intent_result)
 
+            # Validate Stage 2 output before persisting / proceeding
+            self._validate_data_result(data_result)
+
             session_data["stages"]["data_gathering"] = {
                 "status": "completed",
                 "result": data_result,
@@ -242,6 +248,9 @@ class ResearchEngine:
             print("🧠 Analyzing and compiling information...")
 
             analysis_result = await self._analyze_and_compile(intent_result, data_result)
+
+            # Validate Stage 3 output before persisting / proceeding
+            self._validate_analysis_result(analysis_result)
 
             session_data["stages"]["analysis"] = {
                 "status": "completed",
@@ -260,6 +269,9 @@ class ResearchEngine:
                 data_result,
                 analysis_result
             )
+
+            # Validate Stage 4 output before persisting / completing
+            self._validate_report_result(report)
 
             session_data["stages"]["report_generation"] = {
                 "status": "completed",
@@ -306,6 +318,92 @@ class ResearchEngine:
                 "error": str(e),
                 "session_data": session_data
             }
+
+    def _validate_intent_result(self, intent_result: Any) -> None:
+        """Validate intent analysis output.
+
+        The engine should not proceed to the next stage if intent analysis is
+        missing required structure.
+        """
+        if not isinstance(intent_result, dict):
+            raise ValueError("intent_analysis result must be a dict")
+
+        if "needs_clarification" not in intent_result:
+            raise ValueError("intent_analysis result missing 'needs_clarification'")
+
+        needs_clarification = intent_result.get("needs_clarification")
+        if not isinstance(needs_clarification, bool):
+            raise ValueError("intent_analysis 'needs_clarification' must be a bool")
+
+        # If we need clarification, we must have at least one question.
+        if needs_clarification:
+            questions = intent_result.get("questions", [])
+            if not isinstance(questions, list) or len(questions) == 0:
+                raise ValueError("intent_analysis requires non-empty 'questions' when clarification is needed")
+            return
+
+        # Otherwise, we must have usable research questions to drive the pipeline.
+        research_questions = intent_result.get("research_questions")
+        if not isinstance(research_questions, list) or not any(isinstance(q, str) and q.strip() for q in research_questions):
+            raise ValueError("intent_analysis requires non-empty 'research_questions' when clarification is not needed")
+
+        key_entities = intent_result.get("key_entities", [])
+        if key_entities is not None and not isinstance(key_entities, list):
+            raise ValueError("intent_analysis 'key_entities' must be a list when provided")
+
+        domain = intent_result.get("domain", "")
+        if not isinstance(domain, str) or not domain.strip():
+            raise ValueError("intent_analysis 'domain' must be a non-empty string")
+
+    def _validate_data_result(self, data_result: Any) -> None:
+        """Validate data gathering output."""
+        if not isinstance(data_result, dict):
+            raise ValueError("data_gathering result must be a dict")
+
+        sources = data_result.get("sources")
+        if not isinstance(sources, dict) or len(sources) == 0:
+            raise ValueError("data_gathering requires non-empty 'sources' dict")
+
+        consolidated = data_result.get("consolidated_information")
+        if consolidated is None or not isinstance(consolidated, dict):
+            raise ValueError("data_gathering requires 'consolidated_information' dict")
+
+        coverage = data_result.get("coverage_assessment")
+        if coverage is None or not isinstance(coverage, dict):
+            raise ValueError("data_gathering requires 'coverage_assessment' dict")
+
+    def _validate_analysis_result(self, analysis_result: Any) -> None:
+        """Validate analysis & compilation output."""
+        if not isinstance(analysis_result, dict):
+            raise ValueError("analysis result must be a dict")
+
+        themes = analysis_result.get("themes")
+        if not isinstance(themes, list):
+            raise ValueError("analysis requires 'themes' list")
+
+        conflicts = analysis_result.get("conflicts")
+        if not isinstance(conflicts, list):
+            raise ValueError("analysis requires 'conflicts' list")
+
+        summaries = analysis_result.get("summaries")
+        if not isinstance(summaries, dict):
+            raise ValueError("analysis requires 'summaries' dict")
+
+    def _validate_report_result(self, report: Any) -> None:
+        """Validate report generation output."""
+        if not isinstance(report, dict):
+            raise ValueError("report_generation result must be a dict")
+
+        file_path = report.get("file_path")
+        if not isinstance(file_path, str) or not file_path.strip():
+            raise ValueError("report_generation requires non-empty 'file_path'")
+
+        try:
+            if not Path(file_path).exists():
+                raise ValueError(f"report_generation file_path does not exist: {file_path}")
+        except Exception as e:
+            # Normalize path-related issues into a ValueError
+            raise ValueError(f"report_generation invalid file_path: {file_path}") from e
 
     async def _analyze_and_compile(self, intent_result: Dict, data_result: Dict) -> Dict[str, Any]:
         """

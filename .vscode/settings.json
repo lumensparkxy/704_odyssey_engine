@@ -35,5 +35,13 @@
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
         "source.organizeImports": "explicit"
+    },
+    "files.exclude": {
+        "simple_research.py": true,
+        "new_research.py": true,
+        "example.py": true,
+        "setup.sh": true,
+        "DEVELOPMENT.md": true,
+        "DIRECT_RESEARCH_GUIDE.md": true
     }
 }

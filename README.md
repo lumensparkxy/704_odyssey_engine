@@ -21,7 +21,7 @@ All intermediate artifacts, confidence metrics, and final report metadata are pe
 - **Confidence Framework**: Stage + overall scoring (data quality, reliability, coverage, synthesis, structure)
 - **Structured Markdown Reports**: Reproducible, sectioned, and file-named with timestamp + query snippet
 - **Session Persistence**: Versioned JSON per session + optional backups
-- **CLI & Direct Scripts**: Rich interactive CLI plus `simple_research.py` & `new_research.py` automation scripts
+- **CLI & Direct Scripts**: Rich interactive CLI plus `scripts/simple_research.py` & `scripts/new_research.py` automation scripts
 - **Resilience**: Robust JSON parsing retries + fallbacks when LLM output malformed
 - **Extensibility**: Clear extension points for new data sources, analysis modules, and report formats
 
@@ -64,10 +64,10 @@ python main.py --query "Compare EV market share in Europe vs North America 2023"
 python main.py --session <session_id>
 
 # Use simplified script (minimal features)
-python simple_research.py
+python scripts/simple_research.py
 
 # Use full direct script with predefined clarification responses
-python new_research.py
+python scripts/new_research.py
 ```
 
 Generate a new report in `reports/` and a session JSON in `sessions/`.
@@ -88,9 +88,10 @@ src/
 		storage.py          # Async JSON session + backup management
 	cli/
 		interface.py        # Rich interactive terminal UI
-simple_research.py      # Minimal direct usage script
-new_research.py         # Advanced scripted research with overrides
-example.py              # Programmatic usage pattern
+scripts/simple_research.py      # Minimal direct usage script
+scripts/new_research.py         # Advanced scripted research with overrides
+examples/programmatic_usage.py  # Programmatic usage pattern
+docs/                          # Development & usage guides
 tests/                  # Unit + integration markers
 reports/                # Generated markdown reports
 sessions/               # Persisted session JSON
@@ -129,8 +130,8 @@ Unused / planned keys (`LOG_LEVEL`, `CACHE_PATH`) are currently placeholders and
 | Interactive start | `python main.py` |
 | One-shot query | `python main.py --query "How does CRISPR base editing differ from prime editing"` |
 | Continue a session | `python main.py --session <session_id>` |
-| Non-interactive scripted (minimal) | `python simple_research.py` |
-| Non-interactive scripted (advanced) | `python new_research.py` |
+| Non-interactive scripted (minimal) | `python scripts/simple_research.py` |
+| Non-interactive scripted (advanced) | `python scripts/new_research.py` |
 
 Session IDs are printed/logged after initialization; JSON lives in `sessions/`.
 

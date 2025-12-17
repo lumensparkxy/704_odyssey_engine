@@ -60,6 +60,38 @@ class GeminiClient:
             ),
         ]
 
+    def _safe_thinking_config(self) -> Optional[ThinkingConfig]:
+        """Build a ThinkingConfig compatible with the installed google-genai.
+
+        The google-genai SDK has evolved its ThinkingConfig schema over time.
+        Some versions accept `thinking_level`, others reject it (pydantic extra).
+        We try the most featureful config first and fall back gracefully.
+        """
+
+        candidates: List[Dict[str, Any]] = [
+            {"include_thoughts": True, "thinking_level": "high"},
+            {"include_thoughts": True},
+        ]
+
+        for candidate in candidates:
+            try:
+                return types.ThinkingConfig(**candidate)
+            except Exception:
+                continue
+
+        return None
+
+    def _is_thinking_unsupported_error(self, exc: Exception) -> bool:
+        """Return True when the current model/API rejects ThinkingConfig.
+
+        Some Gemini models/endpoints reject thinking controls (e.g. thinking
+        level). In that case we should retry the request without any
+        thinking_config rather than failing the whole pipeline.
+        """
+
+        message = str(exc).lower()
+        return "thinking level is not supported" in message
+
     async def generate_response(self, prompt: str, **kwargs) -> str:
         """
         Generate a response from Gemini.
@@ -71,27 +103,50 @@ class GeminiClient:
         Returns:
             Generated response text
         """
+        thinking_config = self._safe_thinking_config()
+
+        config_kwargs: Dict[str, Any] = {
+            "temperature": kwargs.get("temperature", 1.0),
+            "top_p": kwargs.get("top_p", 1.0),
+            "max_output_tokens": kwargs.get("max_tokens", 8192),
+            "safety_settings": self.safety_settings,
+        }
+        if thinking_config is not None:
+            config_kwargs["thinking_config"] = thinking_config
+
         try:
             # Configure generation parameters using the new API
-            config = types.GenerateContentConfig(
-                temperature=kwargs.get("temperature", 1.0),
-                top_p=kwargs.get("top_p", 1.0),
-                max_output_tokens=kwargs.get("max_tokens", 8192),
-                safety_settings=self.safety_settings,
-                thinking_config=types.ThinkingConfig(
-                    include_thoughts=True, thinking_level="high")
-            )
+            config = types.GenerateContentConfig(**config_kwargs)
 
             # Generate response using the new async API
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
-                config=config
+                config=config,
             )
 
             return response.text
 
         except Exception as e:
+            # Some models reject thinking controls. Retry once without them.
+            if "thinking_config" in config_kwargs and self._is_thinking_unsupported_error(e):
+                self.logger.info(
+                    "Model rejected thinking_config; retrying without thinking controls."
+                )
+                config_kwargs.pop("thinking_config", None)
+                try:
+                    config = types.GenerateContentConfig(**config_kwargs)
+                    response = await self.client.aio.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt,
+                        config=config,
+                    )
+                    return response.text
+                except Exception as retry_error:
+                    raise GeminiAPIError(
+                        f"Error generating response (retry without thinking failed): {str(retry_error)}"
+                    )
+
             raise GeminiAPIError(f"Error generating response: {str(e)}")
 
     async def generate_with_grounding(self, prompt: str, enable_search: bool = True) -> Dict[str, Any]:
@@ -108,23 +163,43 @@ class GeminiClient:
         try:
             if enable_search:
                 try:
+                    thinking_config = self._safe_thinking_config()
+
                     # Use actual Google Search grounding
                     # Note: max_remote_calls is not configurable via GoogleSearch() parameters
                     # It's an internal library setting that defaults to 10
-                    config = types.GenerateContentConfig(
-                        tools=[Tool(google_search=GoogleSearch())],
-                        temperature=1.0,
-                        max_output_tokens=8192,
-                        safety_settings=self.safety_settings,
-                        thinking_config=types.ThinkingConfig(
-                            include_thoughts=True, thinking_level="high")
-                    )
+                    config_kwargs: Dict[str, Any] = {
+                        "tools": [Tool(google_search=GoogleSearch())],
+                        "temperature": 1.0,
+                        "max_output_tokens": 8192,
+                        "safety_settings": self.safety_settings,
+                    }
+                    if thinking_config is not None:
+                        config_kwargs["thinking_config"] = thinking_config
 
-                    response = await self.client.aio.models.generate_content(
-                        model=self.model_name,
-                        contents=prompt,
-                        config=config
-                    )
+                    config = types.GenerateContentConfig(**config_kwargs)
+
+                    try:
+                        response = await self.client.aio.models.generate_content(
+                            model=self.model_name,
+                            contents=prompt,
+                            config=config,
+                        )
+                    except Exception as e:
+                        if "thinking_config" in config_kwargs and self._is_thinking_unsupported_error(e):
+                            self.logger.info(
+                                "Model rejected thinking_config during grounded generation; retrying without thinking controls."
+                            )
+                            config_kwargs.pop("thinking_config", None)
+                            config = types.GenerateContentConfig(
+                                **config_kwargs)
+                            response = await self.client.aio.models.generate_content(
+                                model=self.model_name,
+                                contents=prompt,
+                                config=config,
+                            )
+                        else:
+                            raise
 
                     # Extract basic source information if available
                     sources = []

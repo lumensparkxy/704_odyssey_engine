@@ -42,6 +42,35 @@
 					"PYTHONPATH": "${workspaceFolder}/src"
 				}
 			}
+		},
+		{
+			"label": "Run Tests (pytest)",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"args": [
+				"-m",
+				"pytest",
+				"-q"
+			],
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Run Pytest Integration",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"-ra",
+				"-m",
+				"integration",
+				"tests/test_intent_analyzer_integration.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }
