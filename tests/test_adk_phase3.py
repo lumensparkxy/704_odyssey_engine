@@ -56,13 +56,22 @@ class TestReportGeneratorAgent:
         assert report_generator_agent.model is not None
 
     def test_agent_has_instruction(self):
-        """Agent should have instruction."""
+        """Agent should have instruction (callable or string)."""
         assert report_generator_agent.instruction is not None
-        assert len(report_generator_agent.instruction) > 100
+        # Instruction can be a callable or string
+        if callable(report_generator_agent.instruction):
+            # Call with None context to get the instruction string
+            instruction = report_generator_agent.instruction(None)
+            assert len(instruction) > 100
+        else:
+            assert len(report_generator_agent.instruction) > 100
 
     def test_instruction_contains_report_sections(self):
         """Instruction should mention key report sections."""
-        instruction = report_generator_agent.instruction.lower()
+        if callable(report_generator_agent.instruction):
+            instruction = report_generator_agent.instruction(None).lower()
+        else:
+            instruction = report_generator_agent.instruction.lower()
         assert "executive summary" in instruction
         assert "key findings" in instruction
         assert "detailed" in instruction
@@ -71,7 +80,10 @@ class TestReportGeneratorAgent:
 
     def test_instruction_references_state_keys(self):
         """Instruction should reference expected state keys."""
-        instruction = report_generator_agent.instruction
+        if callable(report_generator_agent.instruction):
+            instruction = report_generator_agent.instruction(None)
+        else:
+            instruction = report_generator_agent.instruction
         assert "{intent_result}" in instruction
         assert "{consolidated_data}" in instruction
         assert "{analysis_result}" in instruction

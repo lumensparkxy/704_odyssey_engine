@@ -8,6 +8,7 @@ This module contains:
 """
 
 import os
+from datetime import datetime
 from google.adk.agents import LlmAgent, SequentialAgent
 
 from ..tools.file_writer import save_report_to_file
@@ -35,7 +36,7 @@ Generate a complete markdown research report with the following sections:
 ```markdown
 # [Research Topic]: Research Report
 
-**Generated:** [Current Date and Time]
+**Generated:** USE_CURRENT_DATETIME_PLACEHOLDER
 **Research Type:** [From intent - e.g., General Research, Comparison, Analysis]
 **Domain:** [From intent - e.g., Technology, Finance, Health]
 **Research Confidence:** See individual sections
@@ -91,11 +92,18 @@ Output the complete markdown report as plain text. Do NOT wrap it in code blocks
 Start directly with the `#` title header.
 """
 
+
+def get_report_generator_instruction(context) -> str:
+    """Generate instruction with current datetime injected."""
+    current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return REPORT_GENERATOR_INSTRUCTION.replace("USE_CURRENT_DATETIME_PLACEHOLDER", current_dt)
+
+
 report_generator_agent = LlmAgent(
     name="ReportGeneratorAgent",
     model=GEMINI_MODEL,
     description="Generates comprehensive markdown research reports from analyzed data.",
-    instruction=REPORT_GENERATOR_INSTRUCTION,
+    instruction=get_report_generator_instruction,
     output_key="report_content",
 )
 
