@@ -142,9 +142,14 @@ def scrape_single_url(url: str, max_content_length: int = 10000) -> Dict[str, An
 
     scraper = WebScraper(config)
 
+    async def _scrape_with_cleanup():
+        """Scrape and properly close the session."""
+        async with scraper:
+            return await scraper.scrape_page(url)
+
     try:
         # Run async scraping in a separate thread to avoid event loop conflicts
-        page = _run_async_in_thread(scraper.scrape_page(url))
+        page = _run_async_in_thread(_scrape_with_cleanup())
     except Exception as e:
         return {
             "url": url,

@@ -346,7 +346,16 @@ Let's start your research journey!
         # Check for report
         report_path = None
         if state.get("report_metadata"):
-            report_path = state["report_metadata"].get("file_path")
+            metadata = state["report_metadata"]
+            # Handle both dict and string formats
+            if isinstance(metadata, dict):
+                report_path = metadata.get("file_path")
+            elif isinstance(metadata, str):
+                # Try to extract path from string - look for the path pattern
+                import re
+                path_match = re.search(r'/[^\s\n]+\.md', metadata)
+                if path_match:
+                    report_path = path_match.group(0)
 
         if report_path and Path(report_path).exists():
             if Confirm.ask("\n[bold]Would you like to view the generated report?[/bold]"):

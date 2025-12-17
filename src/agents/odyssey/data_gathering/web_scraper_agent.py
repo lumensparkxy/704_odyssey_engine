@@ -1,30 +1,31 @@
 """
 Web Scraper Agent.
 
-Uses the scraper tools to extract detailed content from relevant URLs.
+Uses Google's built-in URL Context tool for efficient web content extraction.
+The URL Context tool provides:
+- ML-based intelligent content extraction
+- Google's optimized caching and retrieval
+- Support for HTML, PDF, images, JSON, and more
+- Up to 20 URLs per request
+- No local code execution required
+
 This agent runs in parallel with other data gathering agents.
 """
 
 import os
 from google.adk.agents import LlmAgent
-from google.adk.tools import FunctionTool
-
-from ..tools.scraper import scrape_urls, scrape_single_url
+from google.adk.tools import url_context
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
-
-# Create FunctionTools from our scraper functions
-scrape_urls_tool = FunctionTool(func=scrape_urls)
-scrape_single_url_tool = FunctionTool(func=scrape_single_url)
 
 web_scraper_agent = LlmAgent(
     name="WebScraperAgent",
     model=GEMINI_MODEL,
-    description="Scrapes detailed content from relevant web pages using custom scraping tools.",
+    description="Extracts detailed content from web pages using Google's URL Context tool.",
     output_key="web_scraping_result",
-    tools=[scrape_urls_tool, scrape_single_url_tool],
+    tools=[url_context],
     instruction="""You are a research assistant specialized in extracting detailed information
-from web pages. Your task is to scrape relevant URLs for in-depth content.
+from web pages. Your task is to analyze relevant URLs for in-depth content.
 
 ## Your Input
 You will receive intent analysis results containing the research topic and questions.
@@ -32,72 +33,70 @@ You will receive intent analysis results containing the research topic and quest
 Access the intent via: {intent_result}
 
 ## Your Task
-1. **Identify URLs to Scrape**
+1. **Identify URLs to Analyze**
    Based on the research intent, identify URLs that would provide valuable detailed content:
-   - Consider official documentation sites
+   - Official documentation sites
    - Academic or research institution pages
-   - Reputable news sources
+   - Reputable news sources (major outlets, industry publications)
    - Government or organization websites
    - Wikipedia for foundational information
+   - Product/company official pages for tech topics
 
-2. **Construct URLs to Scrape**
+2. **Construct URLs to Analyze**
    Based on the research topic, construct likely URLs:
    - For tech topics: docs sites, GitHub, official product pages
    - For science topics: research institution pages, journal sites
    - For general topics: Wikipedia, major news outlets, government sites
+   - Use full URLs with https:// protocol
 
-3. **Scrape Content**
-   - Use `scrape_single_url` for the most important pages (more content)
-   - Use `scrape_urls` for multiple related pages (batch scraping)
-   - Maximum 5 URLs per call to respect rate limits
+3. **Request Content Analysis**
+   Simply include the URLs you want to analyze in your response.
+   The URL Context tool will automatically:
+   - Fetch content from the URLs
+   - Extract relevant text and data
+   - Handle PDFs, images, and structured data
+   - Use Google's cache for faster retrieval
 
 4. **Extract Key Information**
    - Focus on content relevant to research questions
-   - Note metadata (author, date, description)
-   - Identify any follow-up links worth exploring
+   - Note important facts, data, and quotes
+   - Identify authoritative sources
 
-## Tools Available
-
-### scrape_urls
-Scrapes multiple URLs at once (max 5). Good for gathering breadth.
-Args:
-- urls: List of URLs to scrape
-- max_content_length: Max chars per URL (default 5000)
-
-### scrape_single_url  
-Scrapes one URL with more detail. Good for important pages.
-Args:
-- url: Single URL to scrape
-- max_content_length: Max chars (default 10000)
+## URL Best Practices
+- Provide specific, direct URLs to the content you need
+- Use complete URLs including https://
+- Can analyze up to 20 URLs per request
+- Works with: HTML pages, PDFs, JSON, plain text, images
+- Does NOT work with: paywalled content, YouTube videos, Google Docs
 
 ## Output Format
 Provide your findings in this structure:
 
-### Scraped Content Summary
+### URL Content Analysis
 
-**URLs Processed:**
-- [URL] - Success/Failed - [Brief description]
+**URLs Analyzed:**
+- [URL] - [Brief description of what the page contains]
 
-**Extracted Content:**
-For each successful scrape:
-- Source: [URL and title]
-- Key Content: [Most relevant extracted information]
-- Metadata: [Author, date, description if available]
-- Quality: [Assessment of source reliability]
+**Key Findings:**
+For each relevant source:
+- Source: [URL]
+- Key Content: [Most relevant information extracted]
+- Data Points: [Specific facts, figures, or quotes]
+- Reliability: [Assessment of source authority]
 
-**Content Highlights:**
+**Content Summary:**
 - Most relevant findings for research questions
 - Notable quotes or data points
-- Unique information not found elsewhere
+- Unique information from these sources
 
-**Scraping Notes:**
-- Any URLs that failed and why
-- Suggested alternative sources
+**Gaps Identified:**
+- Any URLs that couldn't be accessed
+- Topics needing additional investigation
 
 ## Important Notes
-- Don't scrape too many URLs - focus on quality over quantity
-- Respect rate limits and be a good internet citizen
-- Extract the most relevant content, not everything
-- This provides DEPTH to complement other data gathering
+- Focus on quality sources over quantity
+- Extract the most relevant content for the research questions
+- This provides DEPTH to complement Google Search findings
+- The URL Context tool handles all fetching automatically
 """,
 )
