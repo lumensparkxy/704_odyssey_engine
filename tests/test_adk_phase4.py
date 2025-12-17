@@ -1,10 +1,9 @@
 """
 Phase 4 Integration Tests for ADK Migration.
 
-Tests the CLI migration, session utilities, and full pipeline integration:
+Tests the CLI migration and full pipeline integration:
 - ADK CLI interface
-- Entrypoint with --adk/--legacy flags
-- Session migration utilities
+- Entrypoint
 - Full pipeline structure
 """
 
@@ -73,7 +72,7 @@ class TestADKCLI:
 # ============================================================================
 
 class TestEntrypoint:
-    """Tests for the CLI entrypoint with --adk/--legacy flags."""
+    """Tests for the CLI entrypoint."""
 
     def test_entrypoint_importable(self):
         """Entrypoint main should be importable."""
@@ -86,130 +85,12 @@ class TestEntrypoint:
         import click
         assert hasattr(main, 'params')
 
-    def test_entrypoint_has_adk_option(self):
-        """Entrypoint should have --adk/--legacy option."""
+    def test_entrypoint_has_query_option(self):
+        """Entrypoint should have --query/-q option."""
         from src.cli.entrypoint import main
 
         param_names = [p.name for p in main.params]
-        assert 'adk' in param_names
-
-    def test_entrypoint_adk_default_true(self):
-        """ADK mode should be default (True)."""
-        from src.cli.entrypoint import main
-
-        adk_param = next(p for p in main.params if p.name == 'adk')
-        assert adk_param.default is True
-
-
-# ============================================================================
-# Session Migration Tests
-# ============================================================================
-
-class TestSessionMigration:
-    """Tests for session migration utilities."""
-
-    def test_list_legacy_sessions_empty(self):
-        """list_legacy_sessions should handle empty directory."""
-        from src.utils.session_migration import list_legacy_sessions
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            sessions = list_legacy_sessions(tmpdir)
-            assert sessions == []
-
-    def test_list_legacy_sessions_finds_sessions(self):
-        """list_legacy_sessions should find session files."""
-        from src.utils.session_migration import list_legacy_sessions
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a mock session file
-            session_data = {
-                "session_id": "test-session-123",
-                "initial_query": "Test query",
-                "status": "completed",
-                "created_at": "2024-01-01T00:00:00"
-            }
-            session_file = Path(tmpdir) / "session_test-session-123.json"
-            with open(session_file, 'w') as f:
-                json.dump(session_data, f)
-
-            sessions = list_legacy_sessions(tmpdir)
-            assert len(sessions) == 1
-            assert sessions[0]["session_id"] == "test-session-123"
-            assert sessions[0]["status"] == "completed"
-
-    def test_extract_session_state(self):
-        """extract_session_state should convert legacy format to ADK state."""
-        from src.utils.session_migration import extract_session_state
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            session_data = {
-                "session_id": "test-123",
-                "initial_query": "Test query",
-                "stages": {
-                    "intent_analysis": {
-                        "result": {
-                            "intent": {
-                                "research_type": "comparison",
-                                "domain": "technology"
-                            }
-                        }
-                    },
-                    "data_gathering": {
-                        "result": {
-                            "consolidated_information": {"key": "value"},
-                            "sources": {"google_search": {}}
-                        }
-                    }
-                }
-            }
-            session_file = Path(tmpdir) / "session.json"
-            with open(session_file, 'w') as f:
-                json.dump(session_data, f)
-
-            state = extract_session_state(str(session_file))
-
-            assert state["original_query"] == "Test query"
-            assert state["intent_result"]["research_type"] == "comparison"
-            assert "consolidated_data" in state
-
-    def test_get_session_report_path(self):
-        """get_session_report_path should extract report path."""
-        from src.utils.session_migration import get_session_report_path
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            session_data = {
-                "stages": {
-                    "report_generation": {
-                        "result": {
-                            "file_path": "/reports/test_report.md"
-                        }
-                    }
-                }
-            }
-            session_file = Path(tmpdir) / "session.json"
-            with open(session_file, 'w') as f:
-                json.dump(session_data, f)
-
-            path = get_session_report_path(str(session_file))
-            assert path == "/reports/test_report.md"
-
-    def test_archive_legacy_sessions(self):
-        """archive_legacy_sessions should move files to archive."""
-        from src.utils.session_migration import archive_legacy_sessions
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create session file
-            session_file = Path(tmpdir) / "session_test.json"
-            session_file.write_text("{}")
-
-            archive_dir = Path(tmpdir) / "archive"
-
-            result = archive_legacy_sessions(tmpdir, str(archive_dir))
-
-            assert result["archived"] == 1
-            assert archive_dir.exists()
-            assert not session_file.exists()
-            assert (archive_dir / "session_test.json").exists()
+        assert 'query' in param_names
 
 
 # ============================================================================
@@ -259,15 +140,6 @@ class TestFullPipelineStructure:
 class TestCLIPackage:
     """Tests for CLI package exports."""
 
-    def test_cli_package_lazy_imports(self):
-        """CLI package should use lazy imports."""
-        import src.cli
-
-        # Check __all__ is defined
-        assert hasattr(src.cli, '__all__')
-        assert "OdysseyCLI" in src.cli.__all__
-        assert "OdysseyADKCLI" in src.cli.__all__
-
     def test_adk_cli_accessible_from_package(self):
         """OdysseyADKCLI should be accessible from cli package."""
         from src.cli import OdysseyADKCLI
@@ -285,15 +157,11 @@ class TestToolsExports:
         """All tools should be properly exported."""
         from src.agents.odyssey.tools import (
             score_confidence,
-            scrape_urls,
-            scrape_single_url,
             save_report_to_file,
             get_report_path,
         )
 
         assert callable(score_confidence)
-        assert callable(scrape_urls)
-        assert callable(scrape_single_url)
         assert callable(save_report_to_file)
         assert callable(get_report_path)
 

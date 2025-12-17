@@ -69,14 +69,15 @@ class TestPhase2DataGatheringAgents:
         assert len(google_search_agent.tools) > 0
 
     def test_web_scraper_agent_config(self):
-        """Test WebScraperAgent configuration."""
+        """Test WebScraperAgent configuration with url_context tool."""
         from src.agents.odyssey.data_gathering.web_scraper_agent import web_scraper_agent
 
         assert web_scraper_agent.name == "WebScraperAgent"
         assert web_scraper_agent.output_key == "web_scraping_result"
         assert web_scraper_agent.tools is not None
-        # scrape_urls and scrape_single_url
-        assert len(web_scraper_agent.tools) == 2
+        # Now uses url_context built-in tool
+        assert len(web_scraper_agent.tools) == 1
+        assert "UrlContextTool" in type(web_scraper_agent.tools[0]).__name__
 
     def test_consolidator_agent_config(self):
         """Test ConsolidatorAgent configuration."""
@@ -85,52 +86,6 @@ class TestPhase2DataGatheringAgents:
         assert consolidator_agent.name == "ConsolidatorAgent"
         assert consolidator_agent.output_key == "consolidated_data"
         assert "gemini" in consolidator_agent.model.lower()
-
-
-class TestPhase2Tools:
-    """Test Phase 2 scraper tools."""
-
-    def test_scraper_tools_import(self):
-        """Test scraper tools can be imported."""
-        from src.agents.odyssey.tools.scraper import scrape_urls, scrape_single_url
-
-        assert callable(scrape_urls)
-        assert callable(scrape_single_url)
-
-    def test_scrape_urls_returns_dict(self):
-        """Test scrape_urls returns correct structure."""
-        from src.agents.odyssey.tools.scraper import scrape_urls
-
-        # Test with invalid URL (should return error gracefully)
-        result = scrape_urls(["http://invalid.nonexistent.url.test"])
-
-        assert isinstance(result, dict)
-        assert "results" in result
-        assert "stats" in result
-        assert "errors" in result
-
-    def test_scrape_single_url_returns_dict(self):
-        """Test scrape_single_url returns correct structure."""
-        from src.agents.odyssey.tools.scraper import scrape_single_url
-
-        # Test with invalid URL (should return error gracefully)
-        result = scrape_single_url("http://invalid.nonexistent.url.test")
-
-        assert isinstance(result, dict)
-        assert "url" in result
-        assert "success" in result
-        assert "content" in result
-
-    def test_scrape_urls_limits_to_five(self):
-        """Test scrape_urls limits URLs to 5."""
-        from src.agents.odyssey.tools.scraper import scrape_urls
-
-        # Create more than 5 URLs
-        urls = [f"http://test{i}.example.com" for i in range(10)]
-        result = scrape_urls(urls)
-
-        # Stats should show max 5 total pages attempted
-        assert result["stats"]["total_pages"] <= 5
 
 
 class TestPhase2StateKeys:
@@ -217,11 +172,11 @@ class TestPhase2Imports:
         assert web_scraper_agent is not None
         assert consolidator_agent is not None
 
-    def test_scraper_tools_exports(self):
-        """Test scraper tools are exported from tools package."""
-        from src.agents.odyssey.tools import scrape_urls, scrape_single_url
-        assert scrape_urls is not None
-        assert scrape_single_url is not None
+    def test_tools_exports(self):
+        """Test tools are exported from tools package."""
+        from src.agents.odyssey.tools import score_confidence, save_report_to_file
+        assert score_confidence is not None
+        assert save_report_to_file is not None
 
 
 class TestPhase2PipelineOrder:

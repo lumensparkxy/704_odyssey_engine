@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "odyssey-engine"
-version = "1.0.0"
-description = "Deep Research Engine using Gemini API for comprehensive information gathering and analysis"
+version = "2.0.0"
+description = "Deep Research AI powered by Google ADK for comprehensive research and analysis"
 readme = "README.md"
 requires-python = ">=3.14"
 license = {text = "MIT"}
@@ -45,17 +45,16 @@ dependencies = [
 # `[tool.poetry]` allows `poetry install` to work for those who prefer Poetry.
 [tool.poetry]
 name = "odyssey-engine"
-version = "1.0.0"
-description = "Deep Research Engine using Gemini API for comprehensive information gathering and analysis"
+version = "2.0.0"
+description = "Deep Research AI powered by Google ADK for comprehensive research and analysis"
 readme = "README.md"
 license = "MIT"
 authors = ["Odyssey Engine Team"]
 
-# Packages live under src/ but are imported as cli/core/utils
+# Packages live under src/
 packages = [
     { include = "cli", from = "src" },
-    { include = "core", from = "src" },
-    { include = "utils", from = "src" },
+    { include = "agents", from = "src" },
 ]
 
 [tool.poetry.dependencies]
