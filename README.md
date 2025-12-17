@@ -107,6 +107,7 @@ Environment variables (see `.env.example` for full list):
 | GEMINI_API_KEY | Gemini API authentication | (required) |
 | GEMINI_MODEL | Model name | gemini-2.5-pro |
 | CONFIDENCE_THRESHOLD | % required to skip clarification / accept overall | 75 |
+| FORCE_CLARIFICATION_ON_UNCERTAINTY | If `true`, prompts that signal uncertainty (e.g. “I’m not sure… ask me what you need”) are more likely to trigger clarifying questions | true |
 | MAX_FOLLOW_UP_QUESTIONS | Clarification question cap | 5 |
 | MAX_SCRAPING_DEPTH | Recursive link-follow depth | 3 |
 | MAX_SEARCH_RESULTS | Limit initial search URLs considered | 10 |
@@ -132,6 +133,16 @@ Unused / planned keys (`LOG_LEVEL`, `CACHE_PATH`) are currently placeholders and
 | Continue a session | `python main.py --session <session_id>` |
 | Non-interactive scripted (minimal) | `python scripts/simple_research.py` |
 | Non-interactive scripted (advanced) | `python scripts/new_research.py` |
+
+### Entering multi-line prompts
+
+When you use the interactive CLI (`python main.py`) and choose **Start New Research**, you can pick a query entry mode:
+
+- `single`: one line prompt
+- `multiline`: paste multiple lines, then end with a line containing only `END` (or send EOF with Ctrl-D)
+- `file`: load a prompt from a `.txt` / `.md` file
+
+This is useful for longer “brief”-style prompts (constraints, rubric, sections, etc.) that don’t fit nicely on a single line.
 
 Session IDs are printed/logged after initialization; JSON lives in `sessions/`.
 

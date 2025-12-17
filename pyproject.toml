@@ -171,6 +171,12 @@ testpaths = [
     "tests",
 ]
 asyncio_mode = "auto"
+filterwarnings = [
+    # Third-party dependency warning (Python 3.14+):
+    # google-genai triggers DeprecationWarning due to typing internals.
+    # Keep this scoped to the specific module + message substring.
+    "ignore:.*_UnionGenericAlias.*:DeprecationWarning:google\\.genai\\.types",
+]
 markers = [
     "integration: marks tests that make real API calls (may incur costs)",
     "unit: marks tests that use mocks and don't make external calls",

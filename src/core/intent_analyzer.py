@@ -21,6 +21,9 @@ class IntentAnalyzer:
         self.config = config
         self.confidence_threshold = config.get("CONFIDENCE_THRESHOLD", 75)
         self.max_follow_up_questions = config.get("MAX_FOLLOW_UP_QUESTIONS", 5)
+        self.force_clarification_on_uncertainty = bool(
+            config.get("FORCE_CLARIFICATION_ON_UNCERTAINTY", True)
+        )
 
     async def analyze_intent(self, query: str, user_responses: Optional[Dict] = None) -> Dict[str, Any]:
         """
@@ -36,23 +39,46 @@ class IntentAnalyzer:
         # Build context from previous responses
         context = self._build_context(query, user_responses)
 
-        # If user has provided responses, assume clarification is complete and proceed
+        # If user has provided responses, incorporate them but still check confidence
         if user_responses and len(user_responses) > 0:
             # Incorporate user responses into the analysis
             intent_analysis = await self._perform_intent_analysis_with_responses(context)
+
+            # Even with responses, we must check if confidence meets threshold
+            confidence = intent_analysis.get("confidence", 80)
+            try:
+                confidence_value = float(confidence)
+            except (TypeError, ValueError):
+                confidence_value = 80
+
+            # If still below threshold after user responses, flag it but let engine decide
+            # The engine's validation will be the final gate
+            needs_more_clarification = confidence_value < self.confidence_threshold
+
             return {
-                "needs_clarification": False,
+                "needs_clarification": needs_more_clarification,
+                "questions": await self._generate_clarifying_questions(intent_analysis) if needs_more_clarification else [],
                 "intent": intent_analysis,
                 "context": self._derive_context(intent_analysis),
-                "confidence": intent_analysis.get("confidence", 80),
+                "confidence": confidence_value,
                 "research_questions": intent_analysis.get("research_questions", [query]),
                 "key_entities": intent_analysis.get("key_entities", []),
                 "domain": intent_analysis.get("domain", "general"),
-                "scope": intent_analysis.get("scope", "broad")
+                "scope": intent_analysis.get("scope", "broad"),
+                "decision_criteria": intent_analysis.get("decision_criteria", []),
+                "success_criteria": intent_analysis.get("success_criteria", []),
+                "user_responses_provided": True  # Flag to indicate user already answered
             }
 
         # Analyze the intent for first time
         intent_analysis = await self._perform_intent_analysis(context)
+
+        # If the user explicitly signals uncertainty, be stricter about asking questions.
+        # This prevents "fast intent" runs where the model returns high confidence but the
+        # user clearly asked us to clarify constraints.
+        if (not user_responses) and self.force_clarification_on_uncertainty:
+            intent_analysis = self._apply_uncertainty_heuristics(
+                query, intent_analysis)
 
         # Determine if we need clarification
         needs_clarification = await self._needs_clarification(intent_analysis)
@@ -64,7 +90,10 @@ class IntentAnalyzer:
                 "questions": questions,
                 "partial_intent": intent_analysis,
                 "context": self._derive_context(intent_analysis),
-                "confidence": intent_analysis.get("confidence", 0)
+                "confidence": intent_analysis.get("confidence", 0),
+                "decision_criteria": intent_analysis.get("decision_criteria", []),
+                "success_criteria": intent_analysis.get("success_criteria", []),
+                "missing_information": intent_analysis.get("missing_information", [])
             }
 
         return {
@@ -75,7 +104,9 @@ class IntentAnalyzer:
             "research_questions": intent_analysis.get("research_questions", [query]),
             "key_entities": intent_analysis.get("key_entities", []),
             "domain": intent_analysis.get("domain", "general"),
-            "scope": intent_analysis.get("scope", "broad")
+            "scope": intent_analysis.get("scope", "broad"),
+            "decision_criteria": intent_analysis.get("decision_criteria", []),
+            "success_criteria": intent_analysis.get("success_criteria", [])
         }
 
     def _build_context(self, query: str, user_responses: Optional[Dict] = None) -> Dict[str, Any]:
@@ -116,7 +147,9 @@ class IntentAnalyzer:
         5. research_questions: Specific questions to answer based on the original query
         6. context_requirements: What context is needed (can be empty if sufficient info provided)
         7. output_preferences: How to present the information
-        8. confidence: Confidence in this analysis (0-100)
+        8. decision_criteria: List of criteria to use for decisions (e.g., cost, latency, quality, risk)
+        9. success_criteria: List of what “good” looks like for the user / project
+        10. confidence: Confidence in this analysis (0-100)
         
         For food/breakfast research, focus on nutritional value, health benefits, convenience, and general recommendations.
         """
@@ -175,8 +208,10 @@ class IntentAnalyzer:
         5. research_questions: Specific questions to answer
         6. context_requirements: What context is needed
         7. output_preferences: How the user likely wants the information presented
-        8. confidence: Confidence in this analysis (0-100)
-        9. missing_information: What key information is still needed
+        8. decision_criteria: List of criteria to use for decisions (e.g., cost, latency, quality, risk)
+        9. success_criteria: List of what “good” looks like for the user / project
+        10. confidence: Confidence in this analysis (0-100)
+        11. missing_information: What key information is still needed
         
         IMPORTANT: Use Google Search to verify if any mentioned entities (like model versions, products, events) exist, even if they are very recent. Do not assume they are hypothetical without checking.
         
@@ -189,6 +224,8 @@ class IntentAnalyzer:
             "research_questions": ["What is Tesla's market share vs Toyota?"],
             "context_requirements": ["geographic scope", "time period"],
             "output_preferences": ["comparison table", "visual charts"],
+            "decision_criteria": ["cost", "range", "charging availability"],
+            "success_criteria": ["clear recommendation", "sources cited", "covers latest year"],
             "confidence": 60,
             "missing_information": ["specific geographic region", "exact time period"]
         }}
@@ -237,6 +274,66 @@ class IntentAnalyzer:
             return critical_missing
 
         return False
+
+    def _apply_uncertainty_heuristics(self, query: str, intent_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Heuristics to request clarification when the user explicitly says they're unsure.
+
+        We only *nudge* the model's output; we don't attempt to fully rewrite it.
+        """
+        if not isinstance(intent_analysis, dict):
+            return intent_analysis
+
+        q = (query or "").lower()
+        uncertainty_markers = (
+            "not sure",
+            "i'm not sure",
+            "im not sure",
+            "unsure",
+            "don't know",
+            "dont know",
+            "ask me what you need",
+            "ask me what you need.",
+            "unknown",
+        )
+
+        if not any(m in q for m in uncertainty_markers):
+            return intent_analysis
+
+        missing_information = intent_analysis.get("missing_information")
+        if not isinstance(missing_information, list):
+            missing_information = []
+
+        # If the model didn't include missing info, add the common blockers for "decision" queries.
+        if len(missing_information) == 0:
+            missing_information.extend(
+                [
+                    "constraints (latency, cost, throughput)",
+                    "success criteria / definition of done",
+                    "deployment context (users, traffic, data freshness needs)",
+                ]
+            )
+
+        # If criteria fields are missing/empty, treat them as missing.
+        decision_criteria = intent_analysis.get("decision_criteria", [])
+        if not isinstance(decision_criteria, list) or len(decision_criteria) == 0:
+            missing_information.append(
+                "decision criteria (cost, latency, quality, risk)")
+
+        success_criteria = intent_analysis.get("success_criteria", [])
+        if not isinstance(success_criteria, list) or len(success_criteria) == 0:
+            missing_information.append("success criteria")
+
+        # Force clarification by nudging confidence below threshold.
+        try:
+            conf = int(intent_analysis.get("confidence", 0))
+        except Exception:
+            conf = 0
+        intent_analysis["confidence"] = min(
+            conf, int(self.confidence_threshold) - 1)
+        intent_analysis["missing_information"] = list(
+            dict.fromkeys(missing_information))
+
+        return intent_analysis
 
     async def _assess_critical_missing_info(self, intent_analysis: Dict, missing_info: List[str]) -> bool:
         """Assess if missing information is critical for research."""
