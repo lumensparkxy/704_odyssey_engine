@@ -22,25 +22,27 @@ class TestPhase2AgentStructure:
     def test_root_agent_includes_data_gathering(self):
         """Test that root_agent now includes data gathering pipeline."""
         from src.agents.odyssey.agent import root_agent
-        
+
         sub_agent_names = [agent.name for agent in root_agent.sub_agents]
         assert "DataGatheringPipeline" in sub_agent_names
 
     def test_data_gathering_pipeline_structure(self):
         """Test DataGatheringPipeline has correct sub-agents."""
         from src.agents.odyssey.data_gathering import data_gathering_pipeline
-        
+
         assert data_gathering_pipeline.name == "DataGatheringPipeline"
-        sub_agent_names = [agent.name for agent in data_gathering_pipeline.sub_agents]
+        sub_agent_names = [
+            agent.name for agent in data_gathering_pipeline.sub_agents]
         assert "ParallelDataGatherer" in sub_agent_names
         assert "ConsolidatorAgent" in sub_agent_names
 
     def test_parallel_gatherer_structure(self):
         """Test ParallelDataGatherer has correct sub-agents."""
         from src.agents.odyssey.data_gathering.parallel_gatherer import parallel_data_gatherer
-        
+
         assert parallel_data_gatherer.name == "ParallelDataGatherer"
-        sub_agent_names = [agent.name for agent in parallel_data_gatherer.sub_agents]
+        sub_agent_names = [
+            agent.name for agent in parallel_data_gatherer.sub_agents]
         assert "InternalKnowledgeAgent" in sub_agent_names
         assert "GoogleSearchAgent" in sub_agent_names
         assert "WebScraperAgent" in sub_agent_names
@@ -52,7 +54,7 @@ class TestPhase2DataGatheringAgents:
     def test_internal_knowledge_agent_config(self):
         """Test InternalKnowledgeAgent configuration."""
         from src.agents.odyssey.data_gathering.internal_knowledge import internal_knowledge_agent
-        
+
         assert internal_knowledge_agent.name == "InternalKnowledgeAgent"
         assert internal_knowledge_agent.output_key == "internal_knowledge_result"
         assert "gemini" in internal_knowledge_agent.model.lower()
@@ -60,7 +62,7 @@ class TestPhase2DataGatheringAgents:
     def test_google_search_agent_config(self):
         """Test GoogleSearchAgent configuration."""
         from src.agents.odyssey.data_gathering.google_search import google_search_agent
-        
+
         assert google_search_agent.name == "GoogleSearchAgent"
         assert google_search_agent.output_key == "google_search_result"
         assert google_search_agent.tools is not None
@@ -69,16 +71,17 @@ class TestPhase2DataGatheringAgents:
     def test_web_scraper_agent_config(self):
         """Test WebScraperAgent configuration."""
         from src.agents.odyssey.data_gathering.web_scraper_agent import web_scraper_agent
-        
+
         assert web_scraper_agent.name == "WebScraperAgent"
         assert web_scraper_agent.output_key == "web_scraping_result"
         assert web_scraper_agent.tools is not None
-        assert len(web_scraper_agent.tools) == 2  # scrape_urls and scrape_single_url
+        # scrape_urls and scrape_single_url
+        assert len(web_scraper_agent.tools) == 2
 
     def test_consolidator_agent_config(self):
         """Test ConsolidatorAgent configuration."""
         from src.agents.odyssey.data_gathering.consolidator import consolidator_agent
-        
+
         assert consolidator_agent.name == "ConsolidatorAgent"
         assert consolidator_agent.output_key == "consolidated_data"
         assert "gemini" in consolidator_agent.model.lower()
@@ -90,17 +93,17 @@ class TestPhase2Tools:
     def test_scraper_tools_import(self):
         """Test scraper tools can be imported."""
         from src.agents.odyssey.tools.scraper import scrape_urls, scrape_single_url
-        
+
         assert callable(scrape_urls)
         assert callable(scrape_single_url)
 
     def test_scrape_urls_returns_dict(self):
         """Test scrape_urls returns correct structure."""
         from src.agents.odyssey.tools.scraper import scrape_urls
-        
+
         # Test with invalid URL (should return error gracefully)
         result = scrape_urls(["http://invalid.nonexistent.url.test"])
-        
+
         assert isinstance(result, dict)
         assert "results" in result
         assert "stats" in result
@@ -109,10 +112,10 @@ class TestPhase2Tools:
     def test_scrape_single_url_returns_dict(self):
         """Test scrape_single_url returns correct structure."""
         from src.agents.odyssey.tools.scraper import scrape_single_url
-        
+
         # Test with invalid URL (should return error gracefully)
         result = scrape_single_url("http://invalid.nonexistent.url.test")
-        
+
         assert isinstance(result, dict)
         assert "url" in result
         assert "success" in result
@@ -121,11 +124,11 @@ class TestPhase2Tools:
     def test_scrape_urls_limits_to_five(self):
         """Test scrape_urls limits URLs to 5."""
         from src.agents.odyssey.tools.scraper import scrape_urls
-        
+
         # Create more than 5 URLs
         urls = [f"http://test{i}.example.com" for i in range(10)]
         result = scrape_urls(urls)
-        
+
         # Stats should show max 5 total pages attempted
         assert result["stats"]["total_pages"] <= 5
 
@@ -160,28 +163,28 @@ class TestPhase2Instructions:
     def test_internal_knowledge_reads_intent(self):
         """Test InternalKnowledgeAgent reads intent_result."""
         from src.agents.odyssey.data_gathering.internal_knowledge import internal_knowledge_agent
-        
+
         instruction = internal_knowledge_agent.instruction
         assert "{intent_result}" in instruction
 
     def test_google_search_reads_intent(self):
         """Test GoogleSearchAgent reads intent_result."""
         from src.agents.odyssey.data_gathering.google_search import google_search_agent
-        
+
         instruction = google_search_agent.instruction
         assert "{intent_result}" in instruction
 
     def test_web_scraper_reads_intent(self):
         """Test WebScraperAgent reads intent_result."""
         from src.agents.odyssey.data_gathering.web_scraper_agent import web_scraper_agent
-        
+
         instruction = web_scraper_agent.instruction
         assert "{intent_result}" in instruction
 
     def test_consolidator_reads_all_sources(self):
         """Test ConsolidatorAgent reads from all data sources."""
         from src.agents.odyssey.data_gathering.consolidator import consolidator_agent
-        
+
         instruction = consolidator_agent.instruction
         assert "{intent_result}" in instruction
         assert "{internal_knowledge_result}" in instruction
@@ -191,7 +194,7 @@ class TestPhase2Instructions:
     def test_analysis_reads_consolidated_data(self):
         """Test AnalysisAgent now reads consolidated_data."""
         from src.agents.odyssey.analysis.agent import analysis_agent
-        
+
         instruction = analysis_agent.instruction
         assert "{consolidated_data}" in instruction
 
@@ -227,26 +230,27 @@ class TestPhase2PipelineOrder:
     def test_root_pipeline_order(self):
         """Test root agent has correct pipeline order."""
         from src.agents.odyssey.agent import root_agent
-        
+
         sub_agent_names = [agent.name for agent in root_agent.sub_agents]
-        
+
         # Intent should come before data gathering
         intent_idx = sub_agent_names.index("IntentClarificationLoop")
         data_idx = sub_agent_names.index("DataGatheringPipeline")
         analysis_idx = sub_agent_names.index("AnalysisAgent")
-        
+
         assert intent_idx < data_idx < analysis_idx
 
     def test_data_gathering_pipeline_order(self):
         """Test data gathering pipeline order."""
         from src.agents.odyssey.data_gathering import data_gathering_pipeline
-        
-        sub_agent_names = [agent.name for agent in data_gathering_pipeline.sub_agents]
-        
+
+        sub_agent_names = [
+            agent.name for agent in data_gathering_pipeline.sub_agents]
+
         # Parallel gatherer should come before consolidator
         parallel_idx = sub_agent_names.index("ParallelDataGatherer")
         consolidator_idx = sub_agent_names.index("ConsolidatorAgent")
-        
+
         assert parallel_idx < consolidator_idx
 
 

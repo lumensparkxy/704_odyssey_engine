@@ -4,6 +4,7 @@ Web Scraper Tool for ADK Agents.
 Wraps the WebScraper utility as an ADK FunctionTool for use by agents.
 """
 
+from src.utils.web_scraper import WebScraper
 import asyncio
 import sys
 import threading
@@ -15,8 +16,6 @@ from typing import List, Dict, Any
 project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.utils.web_scraper import WebScraper
-
 
 def _run_async_in_thread(coro):
     """Run an async coroutine in a separate thread with its own event loop."""
@@ -27,7 +26,7 @@ def _run_async_in_thread(coro):
             return loop.run_until_complete(coro)
         finally:
             loop.close()
-    
+
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future = executor.submit(run)
         return future.result()
@@ -65,7 +64,8 @@ def scrape_urls(urls: List[str], max_content_length: int = 5000) -> Dict[str, An
 
     try:
         # Run async scraping in a separate thread to avoid event loop conflicts
-        scraped_pages = _run_async_in_thread(scraper.scrape_multiple_urls(urls))
+        scraped_pages = _run_async_in_thread(
+            scraper.scrape_multiple_urls(urls))
     except Exception as e:
         return {
             "results": [],

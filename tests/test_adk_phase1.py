@@ -27,7 +27,7 @@ class TestPhase1AgentStructure:
     def test_root_agent_has_sub_agents(self):
         """Test that root_agent has the expected sub-agents."""
         from src.agents.odyssey.agent import root_agent
-        
+
         sub_agent_names = [agent.name for agent in root_agent.sub_agents]
         assert "IntentClarificationLoop" in sub_agent_names
         assert "AnalysisAgent" in sub_agent_names
@@ -35,7 +35,7 @@ class TestPhase1AgentStructure:
     def test_intent_analyzer_agent_config(self):
         """Test IntentAnalyzerAgent configuration."""
         from src.agents.odyssey.intent.agent import intent_analyzer_agent
-        
+
         assert intent_analyzer_agent.name == "IntentAnalyzerAgent"
         assert intent_analyzer_agent.output_key == "intent_result"
         assert "gemini" in intent_analyzer_agent.model.lower()
@@ -43,7 +43,7 @@ class TestPhase1AgentStructure:
     def test_analysis_agent_config(self):
         """Test AnalysisAgent configuration."""
         from src.agents.odyssey.analysis.agent import analysis_agent
-        
+
         assert analysis_agent.name == "AnalysisAgent"
         assert analysis_agent.output_key == "analysis_result"
         assert "gemini" in analysis_agent.model.lower()
@@ -51,7 +51,7 @@ class TestPhase1AgentStructure:
     def test_confidence_checker_agent(self):
         """Test ConfidenceCheckerAgent configuration."""
         from src.agents.odyssey.intent.clarification import confidence_checker
-        
+
         assert confidence_checker.name == "ConfidenceCheckerAgent"
         assert confidence_checker.description is not None
         # ConfidenceCheckerAgent is a custom BaseAgent that writes needs_clarification to state
@@ -59,7 +59,7 @@ class TestPhase1AgentStructure:
     def test_loop_agent_config(self):
         """Test LoopAgent configuration for clarification."""
         from src.agents.odyssey.intent.clarification import intent_clarification_loop
-        
+
         assert intent_clarification_loop.name == "IntentClarificationLoop"
         assert intent_clarification_loop.max_iterations == 5
 
@@ -70,7 +70,7 @@ class TestPhase1Tools:
     def test_confidence_scorer_tool(self):
         """Test confidence scoring tool."""
         from src.agents.odyssey.tools.confidence import score_confidence
-        
+
         # Test intent scoring
         result = score_confidence("intent", {
             "research_type": "factual",
@@ -79,7 +79,7 @@ class TestPhase1Tools:
             "research_questions": ["What is quantum supremacy?"],
             "missing_information": []
         })
-        
+
         assert "score" in result
         assert "level" in result
         assert "factors" in result
@@ -89,7 +89,7 @@ class TestPhase1Tools:
     def test_confidence_levels(self):
         """Test confidence level thresholds."""
         from src.agents.odyssey.tools.confidence import score_confidence
-        
+
         # High confidence result
         high_result = score_confidence("intent", {
             "research_type": "comparison",
@@ -131,7 +131,7 @@ class TestPhase1Instructions:
     def test_intent_analyzer_has_instruction(self):
         """Test IntentAnalyzerAgent has comprehensive instruction."""
         from src.agents.odyssey.intent.agent import intent_analyzer_agent
-        
+
         instruction = intent_analyzer_agent.instruction
         assert instruction is not None
         assert len(instruction) > 100
@@ -141,7 +141,7 @@ class TestPhase1Instructions:
     def test_analysis_agent_has_instruction(self):
         """Test AnalysisAgent has comprehensive instruction."""
         from src.agents.odyssey.analysis.agent import analysis_agent
-        
+
         instruction = analysis_agent.instruction
         assert instruction is not None
         assert len(instruction) > 100
@@ -151,7 +151,7 @@ class TestPhase1Instructions:
     def test_analysis_reads_intent_result(self):
         """Test AnalysisAgent instruction references intent_result."""
         from src.agents.odyssey.analysis.agent import analysis_agent
-        
+
         instruction = analysis_agent.instruction
         assert "{intent_result}" in instruction
 
