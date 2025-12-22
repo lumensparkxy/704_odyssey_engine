@@ -107,5 +107,5 @@ python main.py
 
 ## Environment Variables
 - `GEMINI_API_KEY`: Required - Gemini API key
-- `GEMINI_MODEL`: Optional - Model name (default: gemini-2.5-pro)
+- `GEMINI_MODEL`: Optional - Model name (default: gemini-3-flash-preview)
 - `REPORTS_OUTPUT_PATH`: Optional - Report output directory (default: ./reports)

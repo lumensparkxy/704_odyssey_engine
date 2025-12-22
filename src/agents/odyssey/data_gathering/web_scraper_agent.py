@@ -16,7 +16,7 @@ import os
 from google.adk.agents import LlmAgent
 from google.adk.tools import url_context
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 web_scraper_agent = LlmAgent(
     name="WebScraperAgent",

@@ -16,7 +16,7 @@ from .analysis import analysis_agent
 from .report import report_generation_pipeline
 
 # Configuration
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 
 # Phase 3: Full pipeline with Intent + Data Gathering + Analysis + Report Generation

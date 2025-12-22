@@ -14,7 +14,7 @@ from google.adk.agents import LlmAgent, SequentialAgent
 from ..tools.file_writer import save_report_to_file
 
 # Configuration
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 
 # ============================================================================

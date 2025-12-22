@@ -8,7 +8,7 @@ Runs after the ParallelAgent completes.
 import os
 from google.adk.agents import LlmAgent
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 consolidator_agent = LlmAgent(
     name="ConsolidatorAgent",

@@ -9,7 +9,7 @@ import os
 from google.adk.agents import LlmAgent
 
 # Get model from environment or use default
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 # System instruction for intent analysis
 INTENT_ANALYZER_INSTRUCTION = """You are an expert research intent analyzer. Your job is to deeply understand what the user wants to research and extract structured information about their request.

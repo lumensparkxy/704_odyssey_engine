@@ -104,7 +104,7 @@ Environment variables (`.env`):
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `GEMINI_API_KEY` | Gemini API authentication | (required) |
-| `GEMINI_MODEL` | Model name | `gemini-2.5-pro` |
+| `GEMINI_MODEL` | Model name | `gemini-3-flash-preview` |
 | `REPORTS_OUTPUT_PATH` | Report output directory | `./reports` |
 
 ## Usage Examples

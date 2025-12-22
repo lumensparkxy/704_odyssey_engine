@@ -9,7 +9,7 @@ import os
 from google.adk.agents import LlmAgent
 
 # Get model from environment or use default
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 # System instruction for analysis
 ANALYSIS_INSTRUCTION = """You are an expert research analyst. Your job is to analyze research data and extract meaningful insights.

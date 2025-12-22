@@ -52,7 +52,7 @@ class OdysseyADKCLI:
         """Load configuration from environment variables."""
         return {
             "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY"),
-            "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),
+            "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-3-flash-preview"),
             "REPORTS_OUTPUT_PATH": os.getenv("REPORTS_OUTPUT_PATH", "./reports"),
             "SESSION_STORAGE_PATH": os.getenv("SESSION_STORAGE_PATH", "./sessions"),
         }

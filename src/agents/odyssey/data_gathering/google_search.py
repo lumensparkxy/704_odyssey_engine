@@ -9,7 +9,7 @@ import os
 from google.adk.agents import LlmAgent
 from google.adk.tools import google_search
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 google_search_agent = LlmAgent(
     name="GoogleSearchAgent",
