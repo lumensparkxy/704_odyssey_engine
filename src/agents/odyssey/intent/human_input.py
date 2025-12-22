@@ -243,7 +243,7 @@ class HumanInputAgent(BaseAgent):
         """Format output preferences for display."""
         if not prefs:
             return "Using defaults (customizable)"
-        
+
         parts = []
         if prefs.get("report_length"):
             parts.append(prefs["report_length"])
@@ -253,7 +253,7 @@ class HumanInputAgent(BaseAgent):
             parts.append(f"{prefs['format_style']} style")
         if prefs.get("include_visuals"):
             parts.append("+ visuals")
-        
+
         return ", ".join(parts) if parts else "Using defaults"
 
     def _generate_clarification_questions(
