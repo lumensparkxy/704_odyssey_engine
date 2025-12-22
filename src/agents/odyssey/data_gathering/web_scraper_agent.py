@@ -10,6 +10,8 @@ The URL Context tool provides:
 - No local code execution required
 
 This agent runs in parallel with other data gathering agents.
+Includes timeout awareness - if scraping takes too long, pipeline continues
+with data from other sources.
 """
 
 import os
@@ -17,6 +19,10 @@ from google.adk.agents import LlmAgent
 from google.adk.tools import url_context
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+
+# Timeout configuration (for documentation - actual timeout applied at runner level)
+WEB_SCRAPER_TIMEOUT = int(
+    os.getenv("WEB_SCRAPER_TIMEOUT", "150"))  # 2.5 minutes
 
 web_scraper_agent = LlmAgent(
     name="WebScraperAgent",
@@ -98,5 +104,13 @@ For each relevant source:
 - Extract the most relevant content for the research questions
 - This provides DEPTH to complement Google Search findings
 - The URL Context tool handles all fetching automatically
+
+## Efficiency Guidelines (Timeout Prevention)
+- Limit to 5-8 URLs maximum to avoid timeouts
+- Prioritize the most authoritative sources first
+- If URL fetching seems slow, produce results with what you have
+- Provide PARTIAL results if time is limited - something is better than nothing
+- Always produce output even if incomplete, with clear status indication
+- Aim to complete within 2.5 minutes
 """,
 )

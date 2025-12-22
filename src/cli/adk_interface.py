@@ -20,6 +20,15 @@ from rich.prompt import Prompt, Confirm
 from rich.markdown import Markdown
 from rich.live import Live
 
+# Import progress display components
+from .progress_display import (
+    ProgressTracker,
+    LiveProgressPanel,
+    extract_tool_info_from_event,
+    get_agent_from_event,
+)
+from .messages import get_phase_header, get_tool_discovery_message
+
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
@@ -36,6 +45,19 @@ from agents.odyssey.tools import create_audit_logger, SessionAuditLogger
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# ============================================================================
+# TIMEOUT CONFIGURATION
+# ============================================================================
+# These can be configured via environment variables
+
+DATA_GATHERING_TIMEOUT = int(
+    os.getenv("DATA_GATHERING_TIMEOUT", "300"))  # 5 minutes
+ANALYSIS_TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "180"))  # 3 minutes
+REPORT_GENERATION_TIMEOUT = int(
+    os.getenv("REPORT_GENERATION_TIMEOUT", "180"))  # 3 minutes
+INTENT_PHASE_TIMEOUT = int(
+    os.getenv("INTENT_PHASE_TIMEOUT", "120"))  # 2 minutes per round
 
 
 class OdysseyADKCLI:
@@ -63,6 +85,14 @@ class OdysseyADKCLI:
 
         # Audit logger (initialized per session)
         self.audit_logger: Optional[SessionAuditLogger] = None
+
+        # Phase timeout tracking
+        self.phase_timeouts = {
+            "data_gathering": DATA_GATHERING_TIMEOUT,
+            "analysis": ANALYSIS_TIMEOUT,
+            "report_generation": REPORT_GENERATION_TIMEOUT,
+            "intent": INTENT_PHASE_TIMEOUT,
+        }
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from environment variables."""
@@ -381,10 +411,7 @@ Let's start your research journey!
         return "complete"
 
     async def _run_data_gathering_phase(self, session, events_collected: List):
-        """Run the data gathering phase using phase-specific runner."""
-        self.console.print(
-            "[dim]Gathering data from multiple sources...[/dim]")
-
+        """Run the data gathering phase using phase-specific runner with live progress and timeout protection."""
         # Copy session state to data runner session
         await self._sync_session_to_phase(session, f"{self.APP_NAME}_data")
 
@@ -395,21 +422,87 @@ Let's start your research journey!
                 text="Proceed with data gathering based on the intent analysis.")]
         )
 
-        async for event in self.data_runner.run_async(
-            user_id=self.user_id,
-            session_id=session.id,
-            new_message=trigger_message,
-        ):
-            events_collected.append(event)
-            self._update_progress_display(event)
+        # Initialize progress tracker for data gathering phase
+        timeout = self.phase_timeouts["data_gathering"]
+        tracker = ProgressTracker("DataGathering", timeout_seconds=timeout)
+        panel = LiveProgressPanel(tracker, self.console)
+
+        timed_out = False
+        start_time = asyncio.get_event_loop().time()
+
+        try:
+            with Live(panel.render(), console=self.console, refresh_per_second=4) as live:
+                async def run_with_progress():
+                    nonlocal timed_out
+                    async for event in self.data_runner.run_async(
+                        user_id=self.user_id,
+                        session_id=session.id,
+                        new_message=trigger_message,
+                    ):
+                        events_collected.append(event)
+
+                        # Update sub-agent if changed
+                        agent_name = get_agent_from_event(event)
+                        if agent_name:
+                            tracker.set_sub_agent(agent_name)
+
+                        # Extract and display tool activity (search queries, URLs)
+                        tool_info = extract_tool_info_from_event(event)
+                        if tool_info:
+                            tracker.add_tool_activity(
+                                tool_info['tool_name'],
+                                tool_info['description']
+                            )
+
+                        # Update elapsed time in tracker
+                        elapsed = asyncio.get_event_loop().time() - start_time
+                        tracker.elapsed_seconds = elapsed
+
+                        # Update the live display
+                        live.update(panel.render())
+
+                # Run with timeout
+                try:
+                    await asyncio.wait_for(run_with_progress(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    timed_out = True
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    self.console.print(
+                        f"\n[yellow]⚠️ Data gathering timed out after {elapsed:.0f}s (limit: {timeout}s)[/yellow]")
+                    self.console.print(
+                        "[yellow]Continuing with partial data...[/yellow]")
+
+                    # Store timeout info in session state for consolidator
+                    await self._update_session_state(session, {
+                        "data_gathering_timeout": True,
+                        "data_gathering_elapsed": elapsed,
+                        "data_gathering_status": "partial_timeout"
+                    })
+
+        except Exception as e:
+            self.console.print(
+                f"\n[red]⚠️ Data gathering error: {str(e)}[/red]")
+            self.console.print(
+                "[yellow]Attempting to continue with available data...[/yellow]")
+
+            # Store error info
+            await self._update_session_state(session, {
+                "data_gathering_error": str(e),
+                "data_gathering_status": "error"
+            })
 
         # Sync state back
         await self._sync_session_from_phase(session, f"{self.APP_NAME}_data")
 
-    async def _run_analysis_phase(self, session, events_collected: List):
-        """Run the analysis phase using phase-specific runner."""
-        self.console.print("[dim]Analyzing and synthesizing findings...[/dim]")
+        # Ensure consolidated_data exists even if data gathering failed/timed out
+        await self._ensure_consolidated_data_exists(session, timed_out)
 
+        if timed_out:
+            self.console.print(
+                "[dim]Pipeline will continue with whatever data was gathered.[/dim]")
+
+    async def _run_analysis_phase(self, session, events_collected: List):
+        """Run the analysis phase using phase-specific runner with live progress and timeout protection."""
         # Copy session state to analysis runner session
         await self._sync_session_to_phase(session, f"{self.APP_NAME}_analysis")
 
@@ -420,21 +513,60 @@ Let's start your research journey!
                 text="Proceed with analysis of the gathered data.")]
         )
 
-        async for event in self.analysis_runner.run_async(
-            user_id=self.user_id,
-            session_id=session.id,
-            new_message=trigger_message,
-        ):
-            events_collected.append(event)
-            self._update_progress_display(event)
+        # Initialize progress tracker for analysis phase
+        timeout = self.phase_timeouts["analysis"]
+        tracker = ProgressTracker("Analysis", timeout_seconds=timeout)
+        panel = LiveProgressPanel(tracker, self.console)
 
+        start_time = asyncio.get_event_loop().time()
+
+        try:
+            with Live(panel.render(), console=self.console, refresh_per_second=4) as live:
+                async def run_with_progress():
+                    async for event in self.analysis_runner.run_async(
+                        user_id=self.user_id,
+                        session_id=session.id,
+                        new_message=trigger_message,
+                    ):
+                        events_collected.append(event)
+
+                        # Update sub-agent if changed
+                        agent_name = get_agent_from_event(event)
+                        if agent_name:
+                            tracker.set_sub_agent(agent_name)
+
+                        # Update elapsed time
+                        elapsed = asyncio.get_event_loop().time() - start_time
+                        tracker.elapsed_seconds = elapsed
+
+                        # Update the live display
+                        live.update(panel.render())
+
+                try:
+                    await asyncio.wait_for(run_with_progress(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    self.console.print(
+                        f"\n[yellow]⚠️ Analysis timed out after {elapsed:.0f}s (limit: {timeout}s)[/yellow]")
+                    self.console.print(
+                        "[yellow]Continuing with partial analysis...[/yellow]")
+
+                    await self._update_session_state(session, {
+                        "analysis_timeout": True,
+                        "analysis_status": "partial_timeout"
+                    })
+
+        except Exception as e:
+            self.console.print(f"\n[red]⚠️ Analysis error: {str(e)}[/red]")
+            await self._update_session_state(session, {
+                "analysis_error": str(e),
+                "analysis_status": "error"
+            })
         # Sync state back
         await self._sync_session_from_phase(session, f"{self.APP_NAME}_analysis")
 
     async def _run_report_phase(self, session, events_collected: List):
-        """Run the report generation phase using phase-specific runner."""
-        self.console.print("[dim]Generating research report...[/dim]")
-
+        """Run the report generation phase using phase-specific runner with live progress and timeout protection."""
         # Copy session state to report runner session
         await self._sync_session_to_phase(session, f"{self.APP_NAME}_report")
 
@@ -445,18 +577,69 @@ Let's start your research journey!
                 text="Generate the final research report based on the analysis.")]
         )
 
+        # Initialize progress tracker for report generation phase
+        timeout = self.phase_timeouts["report_generation"]
+        tracker = ProgressTracker("ReportGeneration", timeout_seconds=timeout)
+        panel = LiveProgressPanel(tracker, self.console)
+
+        start_time = asyncio.get_event_loop().time()
+
         final_response = None
-        async for event in self.report_runner.run_async(
-            user_id=self.user_id,
-            session_id=session.id,
-            new_message=trigger_message,
-        ):
-            events_collected.append(event)
-            self._update_progress_display(event)
+        try:
+            with Live(panel.render(), console=self.console, refresh_per_second=4) as live:
+                async def run_with_progress():
+                    nonlocal final_response
+                    async for event in self.report_runner.run_async(
+                        user_id=self.user_id,
+                        session_id=session.id,
+                        new_message=trigger_message,
+                    ):
+                        events_collected.append(event)
 
-            if hasattr(event, 'content') and event.content:
-                final_response = event
+                        # Update sub-agent if changed
+                        agent_name = get_agent_from_event(event)
+                        if agent_name:
+                            tracker.set_sub_agent(agent_name)
 
+                        # Check for file save tool activity
+                        tool_info = extract_tool_info_from_event(event)
+                        if tool_info:
+                            tracker.add_tool_activity(
+                                tool_info['tool_name'],
+                                tool_info['description']
+                            )
+
+                        # Update elapsed time
+                        elapsed = asyncio.get_event_loop().time() - start_time
+                        tracker.elapsed_seconds = elapsed
+
+                        # Update the live display
+                        live.update(panel.render())
+
+                        if hasattr(event, 'content') and event.content:
+                            final_response = event
+
+                try:
+                    await asyncio.wait_for(run_with_progress(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    self.console.print(
+                        f"\n[yellow]⚠️ Report generation timed out after {elapsed:.0f}s (limit: {timeout}s)[/yellow]")
+                    self.console.print(
+                        "[yellow]Report may be incomplete.[/yellow]")
+
+                    await self._update_session_state(session, {
+                        "report_timeout": True,
+                        "report_status": "partial_timeout"
+                    })
+
+        except Exception as e:
+            self.console.print(
+                f"\n[red]⚠️ Report generation error: {str(e)}[/red]")
+            await self._update_session_state(session, {
+                "report_error": str(e),
+                "report_status": "error"
+            })
         # Sync state back
         await self._sync_session_from_phase(session, f"{self.APP_NAME}_report")
 
@@ -590,7 +773,12 @@ The analysis phase has:
         return summary
 
     def _update_progress_display(self, event):
-        """Update console with progress information."""
+        """
+        Legacy progress display for intent phase (non-live updates).
+
+        Note: Data Gathering, Analysis, and Report phases now use
+        LiveProgressPanel for animated, engaging progress display.
+        """
         if hasattr(event, 'author') and event.author:
             agent_name = event.author
 
@@ -599,14 +787,6 @@ The analysis phase has:
                 "Intent": "📋 Analyzing research intent...",
                 "Confidence": "🎯 Checking confidence level...",
                 "HumanInput": "👤 Preparing for user input...",
-                "DataGathering": "🔍 Gathering data from sources...",
-                "Parallel": "🔍 Gathering data in parallel...",
-                "GoogleSearch": "🌐 Searching the web...",
-                "WebScraper": "📄 Extracting web content...",
-                "InternalKnowledge": "🧠 Consulting knowledge base...",
-                "Consolidator": "📊 Consolidating findings...",
-                "Analysis": "🧠 Analyzing findings...",
-                "Report": "📝 Generating report...",
             }
 
             for key, message in status_map.items():
@@ -878,6 +1058,84 @@ The analysis phase has:
 
         self.console.print("\n[green]✅ Proceeding with research...[/green]")
         return "proceed"
+
+    async def _ensure_consolidated_data_exists(self, session, timed_out: bool = False):
+        """
+        Ensure consolidated_data exists in session state even if data gathering failed.
+
+        This prevents the analysis phase from crashing with 'Context variable not found'.
+        """
+        # Check all possible session sources for consolidated_data
+        data_session = await self.session_service.get_session(
+            app_name=f"{self.APP_NAME}_data",
+            user_id=self.user_id,
+            session_id=session.id,
+        )
+
+        state = data_session.state if data_session else {}
+
+        # Check if consolidated_data already exists and is valid
+        if state.get("consolidated_data") and not state.get("consolidated_data", "").startswith("### "):
+            # Has valid data, no need to create fallback
+            return
+
+        # Create fallback consolidated_data from whatever partial data we have
+        fallback_parts = []
+        fallback_parts.append("### Consolidated Research Data (Partial)\n")
+        fallback_parts.append(
+            "**Note:** Data gathering was interrupted or incomplete.\n\n")
+
+        if timed_out:
+            fallback_parts.append(
+                "**Status:** ⚠️ Data gathering timed out. Working with partial data.\n\n")
+
+        # Try to include any partial results that were gathered
+        internal_knowledge = state.get("internal_knowledge_result", "")
+        google_search = state.get("google_search_result", "")
+        web_scraping = state.get("web_scraping_result", "")
+
+        sources_found = 0
+
+        if internal_knowledge and len(internal_knowledge) > 50:
+            fallback_parts.append("## Internal Knowledge (Available)\n")
+            fallback_parts.append(internal_knowledge[:3000] + "...\n\n" if len(
+                internal_knowledge) > 3000 else internal_knowledge + "\n\n")
+            sources_found += 1
+
+        if google_search and len(google_search) > 50:
+            fallback_parts.append("## Google Search Results (Available)\n")
+            fallback_parts.append(
+                google_search[:3000] + "...\n\n" if len(google_search) > 3000 else google_search + "\n\n")
+            sources_found += 1
+
+        if web_scraping and len(web_scraping) > 50:
+            fallback_parts.append("## Web Content (Available)\n")
+            fallback_parts.append(
+                web_scraping[:3000] + "...\n\n" if len(web_scraping) > 3000 else web_scraping + "\n\n")
+            sources_found += 1
+
+        if sources_found == 0:
+            fallback_parts.append(
+                "**Warning:** No data sources completed successfully.\n")
+            fallback_parts.append(
+                "The analysis will proceed with limited information.\n")
+            fallback_parts.append(
+                "Consider retrying the research if results are unsatisfactory.\n")
+        else:
+            fallback_parts.append(
+                f"\n**Data Sources Available:** {sources_found}/3\n")
+
+        fallback_data = "".join(fallback_parts)
+
+        # Update session state with fallback
+        await self._update_session_state(session, {
+            "consolidated_data": fallback_data,
+            "consolidated_data_is_partial": True,
+            "consolidated_data_sources_count": sources_found,
+        })
+
+        self.console.print(
+            f"[dim]Created fallback consolidated data from {sources_found} source(s).[/dim]")
 
     async def _update_session_state(self, session, state_updates: Dict[str, Any]):
         """Update the session state with new values."""
@@ -1271,6 +1529,21 @@ The engine uses Google ADK with the following stages:
 - Reports are saved in the reports/ directory
 - Session audits saved in logs/sessions/
 - CONFIDENCE_THRESHOLD env var (default: 75)
+
+## Timeout Configuration (Safety Nets)
+The engine has built-in timeouts to prevent indefinite hangs:
+
+| Phase              | Env Variable                | Default |
+|--------------------|----------------------------|---------|
+| Data Gathering     | DATA_GATHERING_TIMEOUT      | 5 min   |
+| Analysis           | ANALYSIS_TIMEOUT            | 3 min   |
+| Report Generation  | REPORT_GENERATION_TIMEOUT   | 3 min   |
+| Intent Round       | INTENT_PHASE_TIMEOUT        | 2 min   |
+
+If a phase times out:
+- ⚠️ The pipeline continues with partial data
+- The next phase works with whatever was gathered
+- A complete report is still generated (may note limitations)
         """
 
         self.console.print(Panel(Markdown(help_text),

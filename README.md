@@ -107,6 +107,23 @@ Environment variables (`.env`):
 | `GEMINI_MODEL` | Model name | `gemini-3-flash-preview` |
 | `REPORTS_OUTPUT_PATH` | Report output directory | `./reports` |
 
+### Timeout Configuration (Safety Nets)
+
+The engine includes built-in timeouts to prevent indefinite hangs when API calls fail or become unresponsive:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `DATA_GATHERING_TIMEOUT` | Max time for data collection phase | `300` (5 min) |
+| `ANALYSIS_TIMEOUT` | Max time for analysis phase | `180` (3 min) |
+| `REPORT_GENERATION_TIMEOUT` | Max time for report generation | `180` (3 min) |
+| `INTENT_PHASE_TIMEOUT` | Max time per intent clarification round | `120` (2 min) |
+
+**Graceful Degradation**: If any phase times out:
+- ⚠️ The pipeline continues with partial data
+- The next phase works with whatever was gathered
+- A complete report is still generated (may note limitations)
+- The CLI displays a warning message
+
 ## Usage Examples
 
 ### Interactive Research Session

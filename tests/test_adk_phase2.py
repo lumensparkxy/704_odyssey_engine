@@ -152,7 +152,8 @@ class TestPhase2Instructions:
         from src.agents.odyssey.analysis.agent import analysis_agent
 
         instruction = analysis_agent.instruction
-        assert "{consolidated_data}" in instruction
+        # Accept both required {consolidated_data} and optional {consolidated_data:} syntax
+        assert "{consolidated_data}" in instruction or "{consolidated_data:}" in instruction
 
 
 class TestPhase2Imports:

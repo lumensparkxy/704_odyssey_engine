@@ -85,8 +85,9 @@ class TestReportGeneratorAgent:
         else:
             instruction = report_generator_agent.instruction
         assert "{intent_result}" in instruction
-        assert "{consolidated_data}" in instruction
-        assert "{analysis_result}" in instruction
+        # Accept both required {var} and optional {var:} syntax for resilience
+        assert "{consolidated_data}" in instruction or "{consolidated_data:}" in instruction
+        assert "{analysis_result}" in instruction or "{analysis_result:}" in instruction
 
     def test_agent_output_key(self):
         """Agent should have correct output key."""

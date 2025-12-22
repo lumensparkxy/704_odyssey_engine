@@ -16,7 +16,13 @@ ANALYSIS_INSTRUCTION = """You are an expert research analyst. Your job is to ana
 
 ## Your Inputs
 - **Research Intent**: {intent_result}
-- **Consolidated Research Data**: {consolidated_data}
+- **Consolidated Research Data**: {consolidated_data:}
+
+**IMPORTANT**: If the consolidated data is marked as "Partial" or indicates some sources failed:
+- Work with whatever data IS available
+- Note limitations in your analysis
+- Still produce useful insights from partial data
+- A partial analysis is better than no analysis
 
 Based on the research intent and consolidated data, perform the following analysis:
 

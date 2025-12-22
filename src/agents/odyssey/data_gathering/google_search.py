@@ -3,6 +3,9 @@ Google Search Agent.
 
 Uses Google Search grounding to find current, relevant information.
 This agent runs in parallel with other data gathering agents.
+
+Includes timeout awareness - if search takes too long, pipeline continues
+with data from other sources.
 """
 
 import os
@@ -10,6 +13,10 @@ from google.adk.agents import LlmAgent
 from google.adk.tools import google_search
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+
+# Timeout configuration (for documentation - actual timeout applied at runner level)
+GOOGLE_SEARCH_TIMEOUT = int(
+    os.getenv("GOOGLE_SEARCH_TIMEOUT", "120"))  # 2 minutes
 
 google_search_agent = LlmAgent(
     name="GoogleSearchAgent",
@@ -73,5 +80,12 @@ For each major finding:
 - Flag any contradictory information found
 - Note URLs that might be worth scraping for more detail
 - This complements internal knowledge with CURRENT information
+
+## Efficiency Guidelines (Timeout Prevention)
+- Execute your searches promptly - aim to complete within 2 minutes
+- Limit to 3-5 focused search queries rather than many broad ones
+- If a search seems slow, move on and note what you found
+- Provide PARTIAL results if time is limited - something is better than nothing
+- Always produce output even if incomplete, prefixed with status
 """,
 )

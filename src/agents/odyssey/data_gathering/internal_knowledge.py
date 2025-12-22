@@ -3,12 +3,18 @@ Internal Knowledge Agent.
 
 Uses Gemini's training data to provide foundational knowledge about the research topic.
 This agent runs in parallel with other data gathering agents.
+
+This is typically the fastest agent since it doesn't require external calls.
 """
 
 import os
 from google.adk.agents import LlmAgent
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+
+# Timeout configuration (for documentation - actual timeout applied at runner level)
+INTERNAL_KNOWLEDGE_TIMEOUT = int(
+    os.getenv("INTERNAL_KNOWLEDGE_TIMEOUT", "120"))  # 2 minutes
 
 internal_knowledge_agent = LlmAgent(
     name="InternalKnowledgeAgent",

@@ -165,29 +165,6 @@ class ConfidenceCheckerAgent(BaseAgent):
         )
 
 
-# Clarification Question Generator Agent (LLM-based alternative)
-clarification_agent = LlmAgent(
-    name="ClarificationAgent",
-    model=GEMINI_MODEL,
-    description="Generates clarifying questions when intent analysis confidence is low",
-    instruction="""You are helping to clarify a research request. Based on the current intent analysis, generate helpful clarifying questions.
-
-Review the intent analysis in {intent_result} and the missing information identified.
-
-Generate 1-3 clear, specific questions that will help clarify:
-- Ambiguous scope or requirements
-- Missing context needed for research
-- Unclear decision criteria
-- Timeframe or geographic constraints
-
-Format your questions conversationally, making them easy to answer. Include examples where helpful.
-
-If {needs_clarification} is false, simply acknowledge the request is clear and summarize the understood intent.
-""",
-    output_key="clarification_questions",
-)
-
-
 # Create the confidence checker instance
 confidence_checker = ConfidenceCheckerAgent()
 

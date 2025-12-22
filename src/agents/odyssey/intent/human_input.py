@@ -12,7 +12,7 @@ import os
 import json
 from typing import AsyncGenerator, Dict, Any, List
 
-from google.adk.agents import BaseAgent, LlmAgent
+from google.adk.agents import BaseAgent
 from google.adk.events import Event, EventActions
 from google.adk.agents.invocation_context import InvocationContext
 
@@ -296,39 +296,6 @@ This was in response to the following clarification questions:
 """
 
         return enriched
-
-
-# Clarification Question Generator Agent (LLM-based)
-clarification_question_agent = LlmAgent(
-    name="ClarificationQuestionAgent",
-    model=GEMINI_MODEL,
-    description="Generates intelligent clarifying questions when intent confidence is low",
-    instruction="""You are helping to clarify a research request. Based on the current intent analysis, generate helpful clarifying questions.
-
-Review the intent analysis in {intent_result} and the missing information identified.
-
-Generate 1-3 clear, specific questions that will help clarify:
-- Ambiguous scope or requirements
-- Missing context needed for effective research
-- Unclear decision criteria or priorities
-- Timeframe, geographic, or other constraints
-
-Rules:
-1. Questions should be conversational and easy to answer
-2. Include examples where helpful to guide the user
-3. Prioritize the most important missing information
-4. Don't ask about things already clear from the query
-
-Current confidence: {current_confidence}%
-Clarification round: {clarification_round}
-
-Format: Return a JSON array of questions:
-```json
-["Question 1?", "Question 2?", "Question 3?"]
-```
-""",
-    output_key="llm_clarification_questions",
-)
 
 
 # Export the human input agent

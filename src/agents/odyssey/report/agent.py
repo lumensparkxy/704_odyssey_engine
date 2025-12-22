@@ -25,8 +25,15 @@ REPORT_GENERATOR_INSTRUCTION = """You are an expert research report writer. Your
 
 ## Your Inputs (from state)
 - **Research Intent**: {intent_result} - Contains the original query, research questions, and output preferences
-- **Consolidated Data**: {consolidated_data} - Contains information gathered from multiple sources
-- **Analysis Results**: {analysis_result} - Contains themes, conflicts, synthesis, and quality assessment
+- **Consolidated Data**: {consolidated_data:} - Contains information gathered from multiple sources
+- **Analysis Results**: {analysis_result:} - Contains themes, conflicts, synthesis, and quality assessment
+
+**IMPORTANT - Handling Partial Data**: 
+If any input shows "Partial", "timed out", or indicates some data sources failed:
+- Still generate a complete report with available data
+- Note limitations in the Executive Summary
+- Add a "Data Collection Notes" section if significant sources failed
+- A partial report is still valuable to the user
 
 ## Report Structure
 

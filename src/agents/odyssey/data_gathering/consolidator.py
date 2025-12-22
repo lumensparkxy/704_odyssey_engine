@@ -3,6 +3,10 @@ Consolidator Agent.
 
 Consolidates data from all parallel gathering sources into a unified structure.
 Runs after the ParallelAgent completes.
+
+IMPORTANT: This agent gracefully handles partial failures - if one or more
+data gathering sources fail or timeout, it will still produce useful output
+from the remaining sources.
 """
 
 import os
@@ -13,13 +17,20 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 consolidator_agent = LlmAgent(
     name="ConsolidatorAgent",
     model=GEMINI_MODEL,
-    description="Consolidates data from multiple sources into a unified research data structure.",
+    description="Consolidates data from multiple sources into a unified research data structure. Handles partial failures gracefully.",
     output_key="consolidated_data",
     instruction="""You are a research data consolidator. Your task is to combine data from multiple
 sources into a unified, well-organized research dataset.
 
+## CRITICAL: Handling Partial Data
+Some data sources may have failed or timed out. This is NORMAL and you MUST continue:
+- If a source shows "Data Gathering Failed" or error messages, note it and move on
+- Work with whatever data IS available
+- The research can still be valuable with partial data
+- Never fail completely just because one source failed
+
 ## Your Inputs
-You have access to data gathered from three parallel sources:
+You have access to data gathered from three parallel sources (some may have failed):
 
 1. **Internal Knowledge** (from Gemini's training data):
    {internal_knowledge_result:}
@@ -101,11 +112,19 @@ Provide your consolidated data in this structure:
 - Source diversity: [rating]
 - Recency of information: [rating]
 
+**Data Source Status:**
+For each source, indicate:
+- ✅ Success - data gathered successfully
+- ⚠️ Partial - some data gathered, some failed
+- ❌ Failed - source unavailable (note reason if visible)
+
 ## Important Notes
 - Be comprehensive but organized
 - Preserve important details, don't over-summarize
 - Clearly attribute all information to sources
 - Flag uncertainties and conflicts for the analysis stage
 - This consolidated data will feed directly into analysis
+- ALWAYS produce output even if some sources failed
+- A report with partial data is better than no report
 """,
 )
