@@ -357,6 +357,7 @@ Let's start your research journey!
         """
         clarification_round = 0
         max_clarification_rounds = 5
+        current_message = user_message  # Track current message for each round
 
         while clarification_round < max_clarification_rounds:
             clarification_round += 1
@@ -365,10 +366,11 @@ Let's start your research journey!
                 f"\n[dim]Analyzing intent (round {clarification_round}/{max_clarification_rounds})...[/dim]")
 
             # Run intent analysis using phase-specific runner
+            # ADK requires a new_message for each run_async call
             async for event in self.intent_runner.run_async(
                 user_id=self.user_id,
                 session_id=session.id,
-                new_message=user_message if clarification_round == 1 else None,
+                new_message=current_message,
             ):
                 events_collected.append(event)
                 self._update_progress_display(event)
@@ -387,18 +389,39 @@ Let's start your research journey!
 
             # Check if we need user input
             if state.get("awaiting_user_input", False):
-                action = await self._handle_human_input(session, state, clarification_round, max_clarification_rounds)
+                action, user_response = await self._handle_human_input(session, state, clarification_round, max_clarification_rounds)
 
                 if action == "cancel":
                     return "cancel"
                 elif action == "proceed":
                     return "complete"
                 elif action == "clarify":
-                    # Reset state for next iteration
+                    # Build enriched query in CLI (before next loop iteration)
+                    # This ensures IntentAnalyzer gets the full context
+                    original_query = state.get("original_query", "")
+                    clarification_questions = state.get("clarification_questions", [])
+                    
+                    # Build cumulative context with all clarifications
+                    enriched_query = self._build_enriched_query(
+                        original_query, 
+                        user_response, 
+                        clarification_questions,
+                        clarification_round
+                    )
+                    
+                    # Create a new message with the enriched query for the next round
+                    current_message = types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=enriched_query)]
+                    )
+                    
+                    # Update session state with enriched query for future reference
                     await self._update_session_state(session, {
                         "awaiting_user_input": False,
                         "response_processed": False,
                         "needs_reanalysis": False,
+                        "original_query": enriched_query,  # Update for next round
+                        "enriched_query": enriched_query,
                     })
                     continue
             else:
@@ -696,6 +719,49 @@ The system has analyzed your research query and identified:
 
 Ready to gather data from multiple sources."""
 
+    def _build_enriched_query(
+        self,
+        original_query: str,
+        user_response: str,
+        clarification_questions: List[str],
+        round_number: int
+    ) -> str:
+        """
+        Build an enriched query that includes the user's clarification.
+        
+        This is called by the CLI before the next intent analysis round,
+        ensuring IntentAnalyzer receives the full context.
+        
+        Args:
+            original_query: The current query (may already include previous clarifications)
+            user_response: The user's latest clarification response
+            clarification_questions: The questions that were asked
+            round_number: Current clarification round number
+            
+        Returns:
+            Enriched query string with all context
+        """
+        enriched_parts = []
+        
+        # Start with the original/current query
+        enriched_parts.append(f"Research Request: {original_query}")
+        enriched_parts.append("")
+        
+        # Add the clarification context
+        enriched_parts.append(f"=== User Clarification (Round {round_number}) ===")
+        
+        if clarification_questions:
+            enriched_parts.append("Questions asked:")
+            for i, q in enumerate(clarification_questions, 1):
+                enriched_parts.append(f"  {i}. {q}")
+            enriched_parts.append("")
+        
+        enriched_parts.append(f"User's response: {user_response}")
+        enriched_parts.append("")
+        enriched_parts.append("Please re-analyze the research intent with this additional context.")
+        
+        return "\n".join(enriched_parts)
+
     async def _get_data_gathering_summary(self, session) -> str:
         """Get a summary of the data gathering phase."""
         # Try data phase session first, then intent session
@@ -794,7 +860,7 @@ The analysis phase has:
                     self.console.print(f"[dim]{message}[/dim]")
                     break
 
-    async def _handle_human_input(self, session, state: Dict[str, Any], current_round: int = 1, max_rounds: int = 5) -> str:
+    async def _handle_human_input(self, session, state: Dict[str, Any], current_round: int = 1, max_rounds: int = 5) -> tuple:
         """
         Handle human input during intent clarification.
 
@@ -805,9 +871,10 @@ The analysis phase has:
             max_rounds: Maximum allowed clarification rounds
 
         Returns:
-            "proceed" - User confirmed, continue to data gathering
-            "clarify" - User provided clarification, re-run intent analysis
-            "cancel" - User cancelled the research
+            Tuple of (action, user_response):
+            - ("proceed", None) - User confirmed, continue to data gathering
+            - ("clarify", response_text) - User provided clarification, re-run intent analysis
+            - ("cancel", None) - User cancelled the research
         """
         input_type = state.get("input_type", "confirmation")
         criteria_display = state.get("intent_criteria_display", {})
@@ -840,7 +907,7 @@ The analysis phase has:
             response = await self._ask_clarification_questions(clarification_questions)
 
             if response is None:
-                return "cancel"  # User cancelled
+                return ("cancel", None)  # User cancelled
 
             # Log user response
             if self.audit_logger:
@@ -860,10 +927,11 @@ The analysis phase has:
                 self.audit_logger.log_iteration_decision(
                     "continue", "User provided clarification")
 
-            return "clarify"
+            return ("clarify", response)
 
         else:
             # Ask for confirmation to proceed
+            # _ask_confirmation_to_proceed already returns a tuple (action, response)
             return await self._ask_confirmation_to_proceed(session, state)
 
     def _display_criteria_checklist(self, criteria_display: Dict[str, Any]):
@@ -972,14 +1040,15 @@ The analysis phase has:
             )
             return response if response.strip() else "No additional information provided."
 
-    async def _ask_confirmation_to_proceed(self, session, state: Dict[str, Any]) -> str:
+    async def _ask_confirmation_to_proceed(self, session, state: Dict[str, Any]) -> tuple:
         """
         Ask user to confirm proceeding with research.
 
         Returns:
-            "proceed" - User confirmed to proceed
-            "clarify" - User wants to provide more info
-            "cancel" - User cancelled
+            Tuple of (action, user_response):
+            - ("proceed", None) - User confirmed to proceed
+            - ("clarify", response_text) - User wants to provide more info
+            - ("cancel", None) - User cancelled
         """
         criteria_display = state.get("intent_criteria_display", {})
         confidence = criteria_display.get("confidence_score", 0)
@@ -1011,7 +1080,7 @@ The analysis phase has:
             if self.audit_logger:
                 self.audit_logger.log_user_confirmation(
                     False, "User cancelled")
-            return "cancel"
+            return ("cancel", None)
 
         if choice in ["2", "clarify"]:
             # User wants to provide more info
@@ -1036,7 +1105,7 @@ The analysis phase has:
                 if self.audit_logger:
                     self.audit_logger.log_iteration_decision(
                         "continue", "User provided additional clarification")
-                return "clarify"
+                return ("clarify", response)
             else:
                 # Empty response, treat as proceed
                 pass
@@ -1057,7 +1126,7 @@ The analysis phase has:
         })
 
         self.console.print("\n[green]✅ Proceeding with research...[/green]")
-        return "proceed"
+        return ("proceed", None)
 
     async def _ensure_consolidated_data_exists(self, session, timed_out: bool = False):
         """
