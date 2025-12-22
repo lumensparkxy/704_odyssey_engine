@@ -338,6 +338,13 @@ Let's start your research journey!
             self.console.print("[yellow]Research cancelled by user.[/yellow]")
             return
 
+        # Collect report customization preferences before generation
+        output_preferences = await self._collect_report_preferences(session)
+        # Serialize to JSON string for ADK state injection
+        await self._update_session_state(session, {
+            "output_preferences": json.dumps(output_preferences, indent=2)
+        })
+
         self.console.print("\n" + "=" * 60)
         self.console.print(
             "[bold cyan]📝 PHASE 4: Report Generation[/bold cyan]")
@@ -842,6 +849,128 @@ The analysis phase has:
 
         return summary
 
+    async def _collect_report_preferences(self, session) -> Dict[str, Any]:
+        """
+        Collect report customization preferences from the user before generation.
+        
+        Returns a dictionary with output preferences that will be passed to the
+        report generation agent.
+        """
+        self.console.print("\n" + "-" * 60)
+        self.console.print("[bold magenta]📝 Report Customization[/bold magenta]")
+        self.console.print("-" * 60)
+        
+        # Check if user already has preferences from intent analysis
+        intent_session = await self.session_service.get_session(
+            app_name=f"{self.APP_NAME}_intent",
+            user_id=self.user_id,
+            session_id=session.id,
+        )
+        state = intent_session.state if intent_session else {}
+        parsed_intent = state.get("parsed_intent", {})
+        existing_prefs = parsed_intent.get("output_preferences", {}) if isinstance(parsed_intent, dict) else {}
+        
+        self.console.print(
+            "\n[dim]Customize how your research report will be generated.[/dim]"
+        )
+        
+        # Ask if user wants to customize or use defaults
+        customize = Prompt.ask(
+            "\n[bold]Would you like to customize the report format?[/bold]",
+            choices=["yes", "no", "y", "n"],
+            default="no"
+        )
+        
+        if customize.lower() in ["no", "n"]:
+            # Use defaults with any existing preferences
+            default_prefs = {
+                "report_length": existing_prefs.get("report_length", "standard"),
+                "audience": existing_prefs.get("audience", "professional"),
+                "format_style": existing_prefs.get("format_style", "executive"),
+                "include_visuals": existing_prefs.get("include_visuals", True),
+                "focus_areas": existing_prefs.get("focus_areas", []),
+            }
+            self.console.print(
+                f"[green]✅ Using default format: {default_prefs['report_length']} report, "
+                f"{default_prefs['audience']} audience, {default_prefs['format_style']} style[/green]"
+            )
+            return default_prefs
+        
+        # Collect preferences interactively
+        preferences = {}
+        
+        # 1. Report Length
+        self.console.print("\n[bold]Report Length:[/bold]")
+        self.console.print("  • [cyan]brief[/cyan] - 1-2 pages, executive summary focus")
+        self.console.print("  • [cyan]standard[/cyan] - 3-5 pages, balanced detail")
+        self.console.print("  • [cyan]comprehensive[/cyan] - 6+ pages, full analysis")
+        
+        preferences["report_length"] = Prompt.ask(
+            "Select length",
+            choices=["brief", "standard", "comprehensive"],
+            default=existing_prefs.get("report_length", "standard")
+        )
+        
+        # 2. Target Audience
+        self.console.print("\n[bold]Target Audience:[/bold]")
+        self.console.print("  • [cyan]general[/cyan] - Non-technical, accessible language")
+        self.console.print("  • [cyan]professional[/cyan] - Business/decision-maker focus")
+        self.console.print("  • [cyan]technical[/cyan] - Expert-level, detailed terminology")
+        
+        preferences["audience"] = Prompt.ask(
+            "Select audience",
+            choices=["general", "professional", "technical"],
+            default=existing_prefs.get("audience", "professional")
+        )
+        
+        # 3. Format Style
+        self.console.print("\n[bold]Report Style:[/bold]")
+        self.console.print("  • [cyan]executive[/cyan] - Summary-focused, key insights first")
+        self.console.print("  • [cyan]academic[/cyan] - Detailed citations, thorough analysis")
+        self.console.print("  • [cyan]practical[/cyan] - Action-oriented, recommendations focus")
+        
+        preferences["format_style"] = Prompt.ask(
+            "Select style",
+            choices=["executive", "academic", "practical"],
+            default=existing_prefs.get("format_style", "executive")
+        )
+        
+        # 4. Include Visuals
+        self.console.print("\n[bold]Include Visual Elements?[/bold]")
+        self.console.print("  (Tables, ASCII diagrams, comparison charts)")
+        
+        include_visuals = Prompt.ask(
+            "Include visuals",
+            choices=["yes", "no"],
+            default="yes" if existing_prefs.get("include_visuals", True) else "no"
+        )
+        preferences["include_visuals"] = include_visuals.lower() == "yes"
+        
+        # 5. Focus Areas (optional)
+        self.console.print("\n[bold]Specific Focus Areas?[/bold] (optional)")
+        self.console.print("  [dim]Enter comma-separated topics to emphasize, or press Enter to skip[/dim]")
+        self.console.print("  [dim]Examples: cost analysis, performance comparison, risk assessment[/dim]")
+        
+        focus_input = Prompt.ask("Focus areas", default="")
+        if focus_input.strip():
+            preferences["focus_areas"] = [
+                area.strip() for area in focus_input.split(",") if area.strip()
+            ]
+        else:
+            preferences["focus_areas"] = existing_prefs.get("focus_areas", [])
+        
+        # Display summary
+        self.console.print("\n" + "-" * 40)
+        self.console.print("[bold green]Report Configuration:[/bold green]")
+        self.console.print(f"  • Length: [cyan]{preferences['report_length']}[/cyan]")
+        self.console.print(f"  • Audience: [cyan]{preferences['audience']}[/cyan]")
+        self.console.print(f"  • Style: [cyan]{preferences['format_style']}[/cyan]")
+        self.console.print(f"  • Visuals: [cyan]{'Yes' if preferences['include_visuals'] else 'No'}[/cyan]")
+        if preferences.get("focus_areas"):
+            self.console.print(f"  • Focus: [cyan]{', '.join(preferences['focus_areas'])}[/cyan]")
+        
+        return preferences
+
     def _update_progress_display(self, event):
         """
         Legacy progress display for intent phase (non-live updates).
@@ -1273,6 +1402,14 @@ The analysis phase has:
 
         # FIX: Ensure all required state variables have defaults to prevent
         # 'Context variable not found' errors from ADK
+        default_output_preferences = json.dumps({
+            "report_length": "standard",
+            "audience": "professional",
+            "format_style": "executive",
+            "include_visuals": True,
+            "focus_areas": []
+        })
+        
         required_defaults = {
             "intent_result": json.dumps({"error": "Intent not available"}),
             "internal_knowledge_result": "No internal knowledge data available.",
@@ -1280,6 +1417,7 @@ The analysis phase has:
             "web_scraping_result": "No web scraping data available.",
             "consolidated_data": "No consolidated data available.",
             "analysis_result": json.dumps({"error": "Analysis not available"}),
+            "output_preferences": default_output_preferences,
         }
 
         for key, default_value in required_defaults.items():

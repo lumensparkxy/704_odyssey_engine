@@ -46,6 +46,14 @@ Analyze the user's research query and determine:
 
 9. **Missing Information**: What key details are unclear or missing?
 
+10. **Output Preferences** (if specified by user): Report customization options
+    - report_length: "brief" (1-2 pages), "standard" (3-5 pages), "comprehensive" (6+ pages)
+    - audience: "general" (non-technical), "professional" (business), "technical" (expert)
+    - format_style: "executive" (summary-focused), "academic" (detailed citations), "practical" (action-oriented)
+    - include_visuals: true/false - whether to include ASCII diagrams, tables, charts
+    - focus_areas: specific aspects to emphasize (e.g., "cost analysis", "technical comparison")
+    - If user doesn't specify, leave as null/empty - defaults will be applied later
+
 **Output Format**: Respond with a structured analysis in JSON format:
 ```json
 {
@@ -58,7 +66,14 @@ Analyze the user's research query and determine:
     "success_criteria": ["criterion1", "criterion2"],
     "confidence": 85,
     "missing_information": ["info1", "info2"],
-    "assumptions": ["assumption1", "assumption2"]
+    "assumptions": ["assumption1", "assumption2"],
+    "output_preferences": {
+        "report_length": "standard",
+        "audience": "professional",
+        "format_style": "executive",
+        "include_visuals": true,
+        "focus_areas": ["area1", "area2"]
+    }
 }
 ```
 

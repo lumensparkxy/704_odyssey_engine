@@ -170,6 +170,7 @@ class HumanInputAgent(BaseAgent):
     def _build_criteria_display(self, intent: Dict[str, Any]) -> Dict[str, Any]:
         """Build formatted criteria checklist for display."""
         confidence = intent.get("confidence", 0)
+        output_prefs = intent.get("output_preferences", {}) or {}
 
         criteria = [
             {
@@ -214,6 +215,12 @@ class HumanInputAgent(BaseAgent):
                 "value": f"{len(intent.get('success_criteria', []))} criteria",
                 "icon": "✅" if intent.get("success_criteria") else "⚠️",
             },
+            {
+                "name": "Report Preferences",
+                "met": bool(output_prefs),
+                "value": self._format_output_preferences_summary(output_prefs),
+                "icon": "✅" if output_prefs else "⚙️",
+            },
         ]
 
         met_count = sum(1 for c in criteria if c["met"])
@@ -228,8 +235,26 @@ class HumanInputAgent(BaseAgent):
             "missing_information": intent.get("missing_information", []),
             "assumptions": intent.get("assumptions", []),
             "research_questions": intent.get("research_questions", []),
+            "output_preferences": output_prefs,
             "ready_to_proceed": confidence >= 75 and met_count >= 5,
         }
+
+    def _format_output_preferences_summary(self, prefs: Dict[str, Any]) -> str:
+        """Format output preferences for display."""
+        if not prefs:
+            return "Using defaults (customizable)"
+        
+        parts = []
+        if prefs.get("report_length"):
+            parts.append(prefs["report_length"])
+        if prefs.get("audience"):
+            parts.append(f"for {prefs['audience']}")
+        if prefs.get("format_style"):
+            parts.append(f"{prefs['format_style']} style")
+        if prefs.get("include_visuals"):
+            parts.append("+ visuals")
+        
+        return ", ".join(parts) if parts else "Using defaults"
 
     def _generate_clarification_questions(
         self,
