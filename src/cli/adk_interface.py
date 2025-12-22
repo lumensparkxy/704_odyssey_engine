@@ -1236,17 +1236,17 @@ The analysis phase has:
         """
         Sync session state from main session to a phase-specific session.
         Creates the phase session if it doesn't exist.
-        
+
         IMPORTANT: This also ensures intent_result contains the parsed intent
         (as a JSON string that downstream agents can read), not just the raw
         LLM output which may be malformed or confusing.
-        
+
         Also ensures all required state variables have default values to prevent
         ADK from throwing 'Context variable not found' errors.
         """
         # Collect state from all possible sources (intent, data, analysis sessions)
         all_state = {}
-        
+
         # Try to get state from all phase sessions
         for app_suffix in ["_intent", "_data", "_analysis", ""]:
             app_name = f"{self.APP_NAME}{app_suffix}" if app_suffix else self.APP_NAME
@@ -1257,11 +1257,11 @@ The analysis phase has:
             )
             if sess and sess.state:
                 all_state.update(sess.state)
-        
+
         # If no state found, use main_session.state
         if not all_state:
             all_state = dict(main_session.state) if main_session.state else {}
-        
+
         # FIX: Ensure intent_result contains the properly parsed intent
         parsed_intent = all_state.get("parsed_intent")
         if parsed_intent and isinstance(parsed_intent, dict):
@@ -1270,7 +1270,7 @@ The analysis phase has:
                 f"[dim]📋 Intent synced: {parsed_intent.get('research_type', 'unknown')} - "
                 f"{', '.join(parsed_intent.get('key_entities', ['N/A']))}[/dim]"
             )
-        
+
         # FIX: Ensure all required state variables have defaults to prevent
         # 'Context variable not found' errors from ADK
         required_defaults = {
@@ -1281,7 +1281,7 @@ The analysis phase has:
             "consolidated_data": "No consolidated data available.",
             "analysis_result": json.dumps({"error": "Analysis not available"}),
         }
-        
+
         for key, default_value in required_defaults.items():
             if key not in all_state or not all_state.get(key):
                 all_state[key] = default_value

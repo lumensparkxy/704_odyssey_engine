@@ -115,7 +115,8 @@ report_generator_agent = LlmAgent(
     name="ReportGeneratorAgent",
     model=GEMINI_MODEL,
     description="Generates comprehensive markdown research reports from analyzed data.",
-    instruction=REPORT_GENERATOR_INSTRUCTION,  # String, not function - enables state injection
+    # String, not function - enables state injection
+    instruction=REPORT_GENERATOR_INSTRUCTION,
     output_key="report_content",
 )
 
