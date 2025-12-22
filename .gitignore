@@ -86,6 +86,7 @@ reports/*
 tmp/
 temp/
 .tmp/
+.adk/
 
 # API Keys and secrets
 .env.local

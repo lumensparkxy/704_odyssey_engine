@@ -2,7 +2,7 @@
 ADK-based CLI Interface for Odyssey Engine.
 
 This module provides the CLI interface using Google ADK Runner for
-executing the research pipeline.
+executing the research pipeline with human-in-the-loop intent clarification.
 """
 
 import os
@@ -24,15 +24,22 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-# Import our root agent
-from agents.odyssey import root_agent
+# Import our agents - both full pipeline and individual phases
+from agents.odyssey import (
+    root_agent,
+    intent_clarification_loop,
+    data_gathering_pipeline,
+    analysis_agent,
+    report_generation_pipeline,
+)
+from agents.odyssey.tools import create_audit_logger, SessionAuditLogger
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class OdysseyADKCLI:
-    """ADK-powered CLI interface for Odyssey Engine."""
+    """ADK-powered CLI interface for Odyssey Engine with human-in-the-loop support."""
 
     APP_NAME = "odyssey_research_engine"
 
@@ -43,10 +50,19 @@ class OdysseyADKCLI:
 
         # ADK services
         self.session_service = InMemorySessionService()
-        self.runner: Optional[Runner] = None
+
+        # Runners for each phase (initialized in run())
+        self.intent_runner: Optional[Runner] = None
+        self.data_runner: Optional[Runner] = None
+        self.analysis_runner: Optional[Runner] = None
+        self.report_runner: Optional[Runner] = None
+        self.runner: Optional[Runner] = None  # Legacy full pipeline runner
 
         # User tracking
         self.user_id = f"user_{uuid.uuid4().hex[:8]}"
+
+        # Audit logger (initialized per session)
+        self.audit_logger: Optional[SessionAuditLogger] = None
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from environment variables."""
@@ -55,6 +71,7 @@ class OdysseyADKCLI:
             "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-3-flash-preview"),
             "REPORTS_OUTPUT_PATH": os.getenv("REPORTS_OUTPUT_PATH", "./reports"),
             "SESSION_STORAGE_PATH": os.getenv("SESSION_STORAGE_PATH", "./sessions"),
+            "AUDIT_LOG_PATH": os.getenv("AUDIT_LOG_PATH", "./logs/sessions"),
         }
 
     async def run(self):
@@ -63,14 +80,35 @@ class OdysseyADKCLI:
             self._show_welcome()
             await self._check_configuration()
 
-            # Initialize ADK Runner
+            # Initialize phase-specific runners for human-in-the-loop execution
+            self.intent_runner = Runner(
+                app_name=f"{self.APP_NAME}_intent",
+                agent=intent_clarification_loop,
+                session_service=self.session_service,
+            )
+            self.data_runner = Runner(
+                app_name=f"{self.APP_NAME}_data",
+                agent=data_gathering_pipeline,
+                session_service=self.session_service,
+            )
+            self.analysis_runner = Runner(
+                app_name=f"{self.APP_NAME}_analysis",
+                agent=analysis_agent,
+                session_service=self.session_service,
+            )
+            self.report_runner = Runner(
+                app_name=f"{self.APP_NAME}_report",
+                agent=report_generation_pipeline,
+                session_service=self.session_service,
+            )
+            # Legacy full pipeline runner
             self.runner = Runner(
                 app_name=self.APP_NAME,
                 agent=root_agent,
                 session_service=self.session_service,
             )
 
-            async with self.runner:
+            async with self.intent_runner, self.data_runner, self.analysis_runner, self.report_runner, self.runner:
                 await self._main_menu()
 
         except KeyboardInterrupt:
@@ -87,7 +125,7 @@ class OdysseyADKCLI:
 Welcome to your intelligent research assistant powered by **Google ADK**!
 
 Odyssey Engine helps you conduct comprehensive research by:
-- Understanding your research intent through conversation
+- Understanding your research intent through **interactive clarification**
 - Gathering information from multiple sources in parallel
 - Analyzing and synthesizing findings
 - Generating detailed research reports
@@ -149,7 +187,7 @@ Let's start your research journey!
                 break
 
     async def _start_new_research(self):
-        """Start a new research session using ADK Runner."""
+        """Start a new research session using ADK Runner with human-in-the-loop."""
         self.console.print(
             "\n[bold blue]🚀 Starting New Research Session[/bold blue]")
 
@@ -160,12 +198,24 @@ Let's start your research journey!
                 "[red]❌ Please provide a research question.[/red]")
             return
 
-        # Create ADK session
+        # Create main ADK session (for legacy runner)
         session = await self.session_service.create_session(
             app_name=self.APP_NAME,
             user_id=self.user_id,
             state={"original_query": query},
         )
+
+        # Create intent phase session (primary session for phase-by-phase execution)
+        await self.session_service.create_session(
+            app_name=f"{self.APP_NAME}_intent",
+            user_id=self.user_id,
+            state={"original_query": query},
+            session_id=session.id,  # Use same session ID for consistency
+        )
+
+        # Initialize audit logger
+        self.audit_logger = create_audit_logger(session.id, self.user_id)
+        self.audit_logger.log_original_query(query)
 
         self.console.print(f"[dim]Session ID: {session.id}[/dim]")
 
@@ -175,56 +225,758 @@ Let's start your research journey!
             parts=[types.Part.from_text(text=query)]
         )
 
-        # Run the research pipeline
-        self.console.print("\n[blue]🔄 Running research pipeline...[/blue]")
+        # Run the research pipeline with human-in-the-loop
+        await self._run_pipeline_with_interaction(session, user_message)
+
+    async def _run_pipeline_with_interaction(self, session, user_message):
+        """
+        Run the pipeline with human-in-the-loop interaction at each phase.
+
+        Pipeline Phases:
+        1. Intent Analysis - Clarify user's research intent (max 5 rounds)
+        2. Data Gathering - Collect information from multiple sources
+        3. Analysis - Analyze and synthesize findings
+        4. Report Generation - Generate final research report
+
+        Human checkpoint after each phase allows user to:
+        - Review results
+        - Provide feedback
+        - Continue, modify, or cancel
+        """
+        self.console.print("\n[blue]🔄 Starting Research Pipeline...[/blue]")
 
         events_collected = []
-        final_response = None
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=self.console,
-            transient=True
-        ) as progress:
-            task = progress.add_task("Processing...", total=None)
+        # ============ PHASE 1: Intent Analysis ============
+        self.console.print("\n" + "=" * 60)
+        self.console.print("[bold cyan]📋 PHASE 1: Intent Analysis[/bold cyan]")
+        self.console.print("=" * 60)
 
-            try:
-                async for event in self.runner.run_async(
-                    user_id=self.user_id,
-                    session_id=session.id,
-                    new_message=user_message,
-                ):
-                    events_collected.append(event)
+        intent_result = await self._run_intent_phase(session, user_message, events_collected)
+        if intent_result == "cancel":
+            return
 
-                    # Update progress based on event
-                    if hasattr(event, 'author') and event.author:
-                        agent_name = event.author
-                        if "Intent" in agent_name:
-                            progress.update(
-                                task, description="📋 Analyzing research intent...")
-                        elif "DataGathering" in agent_name or "Parallel" in agent_name:
-                            progress.update(
-                                task, description="🔍 Gathering data from sources...")
-                        elif "Analysis" in agent_name:
-                            progress.update(
-                                task, description="🧠 Analyzing findings...")
-                        elif "Report" in agent_name:
-                            progress.update(
-                                task, description="📝 Generating report...")
+        # ============ PHASE 2: Data Gathering ============
+        proceed = await self._phase_checkpoint(
+            session,
+            phase_name="Data Gathering",
+            phase_number=2,
+            description="Collect information from internal knowledge, Google Search, and web sources",
+            previous_phase_summary=self._get_intent_summary(session)
+        )
 
-                    # Capture final response
-                    if hasattr(event, 'content') and event.content:
-                        final_response = event
+        if not proceed:
+            self.console.print("[yellow]Research cancelled by user.[/yellow]")
+            return
 
-            except Exception as e:
-                progress.stop()
-                self.console.print(
-                    f"[red]❌ Error during research: {str(e)}[/red]")
-                return
+        self.console.print("\n" + "=" * 60)
+        self.console.print("[bold cyan]🔍 PHASE 2: Data Gathering[/bold cyan]")
+        self.console.print("=" * 60)
 
-        # Show results
+        await self._run_data_gathering_phase(session, events_collected)
+
+        # ============ PHASE 3: Analysis ============
+        proceed = await self._phase_checkpoint(
+            session,
+            phase_name="Analysis",
+            phase_number=3,
+            description="Analyze gathered data, identify themes, conflicts, and synthesize findings",
+            previous_phase_summary=await self._get_data_gathering_summary(session)
+        )
+
+        if not proceed:
+            self.console.print("[yellow]Research cancelled by user.[/yellow]")
+            return
+
+        self.console.print("\n" + "=" * 60)
+        self.console.print("[bold cyan]🧠 PHASE 3: Analysis[/bold cyan]")
+        self.console.print("=" * 60)
+
+        await self._run_analysis_phase(session, events_collected)
+
+        # ============ PHASE 4: Report Generation ============
+        proceed = await self._phase_checkpoint(
+            session,
+            phase_name="Report Generation",
+            phase_number=4,
+            description="Generate comprehensive research report in markdown format",
+            previous_phase_summary=await self._get_analysis_summary(session)
+        )
+
+        if not proceed:
+            self.console.print("[yellow]Research cancelled by user.[/yellow]")
+            return
+
+        self.console.print("\n" + "=" * 60)
+        self.console.print(
+            "[bold cyan]📝 PHASE 4: Report Generation[/bold cyan]")
+        self.console.print("=" * 60)
+
+        final_response = await self._run_report_phase(session, events_collected)
+
+        # Show final results
         await self._show_research_results(session, events_collected, final_response)
+
+    async def _run_intent_phase(self, session, user_message, events_collected: List) -> str:
+        """
+        Run the intent clarification phase with max 5 rounds.
+
+        Returns:
+            "complete" - Intent phase completed successfully
+            "cancel" - User cancelled
+        """
+        clarification_round = 0
+        max_clarification_rounds = 5
+
+        while clarification_round < max_clarification_rounds:
+            clarification_round += 1
+
+            self.console.print(
+                f"\n[dim]Analyzing intent (round {clarification_round}/{max_clarification_rounds})...[/dim]")
+
+            # Run intent analysis using phase-specific runner
+            async for event in self.intent_runner.run_async(
+                user_id=self.user_id,
+                session_id=session.id,
+                new_message=user_message if clarification_round == 1 else None,
+            ):
+                events_collected.append(event)
+                self._update_progress_display(event)
+
+            # Check session state (use intent runner app name)
+            updated_session = await self.session_service.get_session(
+                app_name=f"{self.APP_NAME}_intent",
+                user_id=self.user_id,
+                session_id=session.id,
+            )
+            state = updated_session.state if updated_session else {}
+
+            # Check if user already confirmed
+            if state.get("user_confirmed_proceed") or state.get("intent_phase_complete"):
+                return "complete"
+
+            # Check if we need user input
+            if state.get("awaiting_user_input", False):
+                action = await self._handle_human_input(session, state, clarification_round, max_clarification_rounds)
+
+                if action == "cancel":
+                    return "cancel"
+                elif action == "proceed":
+                    return "complete"
+                elif action == "clarify":
+                    # Reset state for next iteration
+                    await self._update_session_state(session, {
+                        "awaiting_user_input": False,
+                        "response_processed": False,
+                        "needs_reanalysis": False,
+                    })
+                    continue
+            else:
+                # No user input needed, phase complete
+                return "complete"
+
+        # Max rounds reached
+        self.console.print(
+            f"[yellow]⚠️ Maximum clarification rounds ({max_clarification_rounds}) reached.[/yellow]")
+        return "complete"
+
+    async def _run_data_gathering_phase(self, session, events_collected: List):
+        """Run the data gathering phase using phase-specific runner."""
+        self.console.print(
+            "[dim]Gathering data from multiple sources...[/dim]")
+
+        # Copy session state to data runner session
+        await self._sync_session_to_phase(session, f"{self.APP_NAME}_data")
+
+        # ADK requires a message to trigger the agent
+        trigger_message = types.Content(
+            role="user",
+            parts=[types.Part.from_text(
+                text="Proceed with data gathering based on the intent analysis.")]
+        )
+
+        async for event in self.data_runner.run_async(
+            user_id=self.user_id,
+            session_id=session.id,
+            new_message=trigger_message,
+        ):
+            events_collected.append(event)
+            self._update_progress_display(event)
+
+        # Sync state back
+        await self._sync_session_from_phase(session, f"{self.APP_NAME}_data")
+
+    async def _run_analysis_phase(self, session, events_collected: List):
+        """Run the analysis phase using phase-specific runner."""
+        self.console.print("[dim]Analyzing and synthesizing findings...[/dim]")
+
+        # Copy session state to analysis runner session
+        await self._sync_session_to_phase(session, f"{self.APP_NAME}_analysis")
+
+        # ADK requires a message to trigger the agent
+        trigger_message = types.Content(
+            role="user",
+            parts=[types.Part.from_text(
+                text="Proceed with analysis of the gathered data.")]
+        )
+
+        async for event in self.analysis_runner.run_async(
+            user_id=self.user_id,
+            session_id=session.id,
+            new_message=trigger_message,
+        ):
+            events_collected.append(event)
+            self._update_progress_display(event)
+
+        # Sync state back
+        await self._sync_session_from_phase(session, f"{self.APP_NAME}_analysis")
+
+    async def _run_report_phase(self, session, events_collected: List):
+        """Run the report generation phase using phase-specific runner."""
+        self.console.print("[dim]Generating research report...[/dim]")
+
+        # Copy session state to report runner session
+        await self._sync_session_to_phase(session, f"{self.APP_NAME}_report")
+
+        # ADK requires a message to trigger the agent
+        trigger_message = types.Content(
+            role="user",
+            parts=[types.Part.from_text(
+                text="Generate the final research report based on the analysis.")]
+        )
+
+        final_response = None
+        async for event in self.report_runner.run_async(
+            user_id=self.user_id,
+            session_id=session.id,
+            new_message=trigger_message,
+        ):
+            events_collected.append(event)
+            self._update_progress_display(event)
+
+            if hasattr(event, 'content') and event.content:
+                final_response = event
+
+        # Sync state back
+        await self._sync_session_from_phase(session, f"{self.APP_NAME}_report")
+
+        return final_response
+
+    async def _phase_checkpoint(
+        self,
+        session,
+        phase_name: str,
+        phase_number: int,
+        description: str,
+        previous_phase_summary: str
+    ) -> bool:
+        """
+        Display checkpoint between phases and get user confirmation.
+
+        Returns:
+            True to proceed, False to cancel
+        """
+        self.console.print("\n" + "-" * 60)
+        self.console.print(
+            f"[bold green]✅ Phase {phase_number - 1} Complete![/bold green]")
+        self.console.print("-" * 60)
+
+        if previous_phase_summary:
+            self.console.print(Panel(
+                Markdown(previous_phase_summary),
+                title=f"Phase {phase_number - 1} Summary",
+                border_style="green"
+            ))
+
+        self.console.print(
+            f"\n[bold]Next: Phase {phase_number} - {phase_name}[/bold]")
+        self.console.print(f"[dim]{description}[/dim]")
+
+        choice = Prompt.ask(
+            "\n[bold]Continue to next phase?[/bold]",
+            choices=["yes", "no", "y", "n"],
+            default="yes"
+        )
+
+        return choice.lower() in ["yes", "y"]
+
+    def _get_intent_summary(self, session) -> str:
+        """Get a summary of the intent analysis phase."""
+        # This is synchronous, we'll get state from the session service later
+        return """**Research Intent Analyzed**
+
+The system has analyzed your research query and identified:
+- Research type and scope
+- Key entities to investigate
+- Research questions to answer
+- Success criteria for the research
+
+Ready to gather data from multiple sources."""
+
+    async def _get_data_gathering_summary(self, session) -> str:
+        """Get a summary of the data gathering phase."""
+        # Try data phase session first, then intent session
+        updated_session = await self.session_service.get_session(
+            app_name=f"{self.APP_NAME}_data",
+            user_id=self.user_id,
+            session_id=session.id,
+        )
+        if not updated_session:
+            updated_session = await self.session_service.get_session(
+                app_name=f"{self.APP_NAME}_intent",
+                user_id=self.user_id,
+                session_id=session.id,
+            )
+        state = updated_session.state if updated_session else {}
+
+        consolidated = state.get("consolidated_information", "")
+        if consolidated and len(consolidated) > 500:
+            consolidated = consolidated[:500] + "..."
+
+        summary = """**Data Collection Complete**
+
+Information gathered from:
+- 🧠 Internal Knowledge Base
+- 🌐 Google Search Results
+- 📄 Web Page Content
+
+"""
+        if consolidated:
+            summary += f"**Preview:**\n{consolidated}"
+        else:
+            summary += "Data has been consolidated and is ready for analysis."
+
+        return summary
+
+    async def _get_analysis_summary(self, session) -> str:
+        """Get a summary of the analysis phase."""
+        # Try analysis phase session first, then data, then intent
+        updated_session = await self.session_service.get_session(
+            app_name=f"{self.APP_NAME}_analysis",
+            user_id=self.user_id,
+            session_id=session.id,
+        )
+        if not updated_session:
+            updated_session = await self.session_service.get_session(
+                app_name=f"{self.APP_NAME}_data",
+                user_id=self.user_id,
+                session_id=session.id,
+            )
+        if not updated_session:
+            updated_session = await self.session_service.get_session(
+                app_name=f"{self.APP_NAME}_intent",
+                user_id=self.user_id,
+                session_id=session.id,
+            )
+        state = updated_session.state if updated_session else {}
+
+        analysis = state.get("analysis_result", "")
+        if analysis and len(analysis) > 500:
+            analysis = analysis[:500] + "..."
+
+        summary = """**Analysis Complete**
+
+The analysis phase has:
+- Identified key themes and patterns
+- Detected any conflicts or contradictions
+- Synthesized findings into coherent insights
+
+"""
+        if analysis:
+            summary += f"**Preview:**\n{analysis}"
+        else:
+            summary += "Analysis is complete and ready for report generation."
+
+        return summary
+
+    def _update_progress_display(self, event):
+        """Update console with progress information."""
+        if hasattr(event, 'author') and event.author:
+            agent_name = event.author
+
+            # Map agent names to user-friendly status messages
+            status_map = {
+                "Intent": "📋 Analyzing research intent...",
+                "Confidence": "🎯 Checking confidence level...",
+                "HumanInput": "👤 Preparing for user input...",
+                "DataGathering": "🔍 Gathering data from sources...",
+                "Parallel": "🔍 Gathering data in parallel...",
+                "GoogleSearch": "🌐 Searching the web...",
+                "WebScraper": "📄 Extracting web content...",
+                "InternalKnowledge": "🧠 Consulting knowledge base...",
+                "Consolidator": "📊 Consolidating findings...",
+                "Analysis": "🧠 Analyzing findings...",
+                "Report": "📝 Generating report...",
+            }
+
+            for key, message in status_map.items():
+                if key in agent_name:
+                    self.console.print(f"[dim]{message}[/dim]")
+                    break
+
+    async def _handle_human_input(self, session, state: Dict[str, Any], current_round: int = 1, max_rounds: int = 5) -> str:
+        """
+        Handle human input during intent clarification.
+
+        Args:
+            session: Current ADK session
+            state: Current session state
+            current_round: Current clarification round (1-indexed)
+            max_rounds: Maximum allowed clarification rounds
+
+        Returns:
+            "proceed" - User confirmed, continue to data gathering
+            "clarify" - User provided clarification, re-run intent analysis
+            "cancel" - User cancelled the research
+        """
+        input_type = state.get("input_type", "confirmation")
+        criteria_display = state.get("intent_criteria_display", {})
+        clarification_questions = state.get("clarification_questions", [])
+        current_confidence = state.get("current_confidence", 0)
+
+        # Log iteration start
+        if self.audit_logger:
+            self.audit_logger.start_iteration()
+            parsed_intent = state.get("parsed_intent", {})
+            self.audit_logger.log_intent_analysis(parsed_intent)
+            self.audit_logger.log_criteria_check(
+                state.get("criteria_status", {}))
+
+        self.console.print("\n" + "=" * 60)
+        self.console.print(
+            f"[bold yellow]📋 Intent Analysis - Round {current_round}/{max_rounds}[/bold yellow]")
+        self.console.print("=" * 60)
+
+        # Display the criteria checklist
+        self._display_criteria_checklist(criteria_display)
+
+        if input_type == "clarification" and clarification_questions:
+            # Log clarification questions
+            if self.audit_logger:
+                self.audit_logger.log_clarification_questions(
+                    clarification_questions)
+
+            # Ask clarification questions
+            response = await self._ask_clarification_questions(clarification_questions)
+
+            if response is None:
+                return "cancel"  # User cancelled
+
+            # Log user response
+            if self.audit_logger:
+                self.audit_logger.log_user_response(
+                    "; ".join(clarification_questions),
+                    response
+                )
+
+            # Update session state with user response
+            await self._update_session_state(session, {
+                "user_clarification_response": response,
+                "awaiting_user_input": False,
+                "response_processed": False,
+            })
+
+            if self.audit_logger:
+                self.audit_logger.log_iteration_decision(
+                    "continue", "User provided clarification")
+
+            return "clarify"
+
+        else:
+            # Ask for confirmation to proceed
+            return await self._ask_confirmation_to_proceed(session, state)
+
+    def _display_criteria_checklist(self, criteria_display: Dict[str, Any]):
+        """Display the intent analysis criteria checklist."""
+        if not criteria_display:
+            return
+
+        criteria = criteria_display.get("criteria", [])
+        confidence = criteria_display.get("confidence_score", 0)
+        met_count = criteria_display.get("criteria_met_count", 0)
+        total_count = criteria_display.get("criteria_total_count", 0)
+
+        # Build criteria table
+        table = Table(title="Understanding Your Research Request",
+                      show_header=True)
+        table.add_column("Status", style="cyan", width=3)
+        table.add_column("Criterion", style="white")
+        table.add_column("Value", style="green")
+
+        for criterion in criteria:
+            icon = criterion.get("icon", "❓")
+            name = criterion.get("name", "Unknown")
+            value = criterion.get("value", "Not specified")
+            table.add_row(icon, name, value)
+
+        self.console.print(table)
+
+        # Confidence bar
+        confidence_bar = self._build_confidence_bar(confidence)
+        self.console.print(
+            f"\n[bold]Confidence Score:[/bold] {confidence_bar} {confidence}%")
+        self.console.print(
+            f"[dim]Criteria met: {met_count}/{total_count}[/dim]")
+
+        # Show missing information if any
+        missing_info = criteria_display.get("missing_information", [])
+        if missing_info:
+            self.console.print("\n[yellow]⚠️ Missing Information:[/yellow]")
+            for info in missing_info[:5]:
+                self.console.print(f"  • {info}")
+
+        # Show assumptions if any
+        assumptions = criteria_display.get("assumptions", [])
+        if assumptions:
+            self.console.print("\n[blue]💭 Assumptions Made:[/blue]")
+            for assumption in assumptions[:3]:
+                self.console.print(f"  • {assumption}")
+
+        # Show research questions
+        research_questions = criteria_display.get("research_questions", [])
+        if research_questions:
+            self.console.print(
+                "\n[green]📝 Research Questions Identified:[/green]")
+            for i, question in enumerate(research_questions[:5], 1):
+                self.console.print(f"  {i}. {question}")
+
+    def _build_confidence_bar(self, confidence: int) -> str:
+        """Build a visual confidence bar."""
+        filled = int(confidence / 10)
+        empty = 10 - filled
+
+        if confidence >= 75:
+            color = "green"
+        elif confidence >= 50:
+            color = "yellow"
+        else:
+            color = "red"
+
+        return f"[{color}]{'█' * filled}{'░' * empty}[/{color}]"
+
+    async def _ask_clarification_questions(self, questions: List[str]) -> Optional[str]:
+        """
+        Ask clarification questions and get user response.
+
+        Returns:
+            User's response text, or None if cancelled
+        """
+        self.console.print(
+            "\n[bold yellow]❓ Clarification Needed[/bold yellow]")
+        self.console.print(
+            "[dim]Please provide additional information to improve the research:[/dim]\n")
+
+        for i, question in enumerate(questions, 1):
+            self.console.print(f"  [cyan]{i}.[/cyan] {question}")
+
+        self.console.print()
+
+        # Offer options
+        choice = Prompt.ask(
+            "[bold]Your choice[/bold]",
+            choices=["answer", "skip", "cancel"],
+            default="answer"
+        )
+
+        if choice == "cancel":
+            return None
+        elif choice == "skip":
+            return "I'd like to proceed with the current understanding."
+        else:
+            # Get detailed response
+            self.console.print(
+                "\n[dim]Enter your clarification (type 'END' on a new line when done):[/dim]")
+            response = self._read_multiline_input(
+                title="Your Clarification",
+                terminator="END"
+            )
+            return response if response.strip() else "No additional information provided."
+
+    async def _ask_confirmation_to_proceed(self, session, state: Dict[str, Any]) -> str:
+        """
+        Ask user to confirm proceeding with research.
+
+        Returns:
+            "proceed" - User confirmed to proceed
+            "clarify" - User wants to provide more info
+            "cancel" - User cancelled
+        """
+        criteria_display = state.get("intent_criteria_display", {})
+        confidence = criteria_display.get("confidence_score", 0)
+        ready = criteria_display.get("ready_to_proceed", False)
+
+        self.console.print("\n" + "-" * 40)
+
+        if ready and confidence >= 75:
+            self.console.print(
+                "[green]✅ Research intent is clear and ready to proceed![/green]")
+        else:
+            self.console.print(
+                "[yellow]⚠️ Some criteria are not fully met, but you can still proceed.[/yellow]")
+
+        self.console.print("\n[bold]What would you like to do?[/bold]")
+        self.console.print(
+            "  1. [green]Proceed[/green] - Start the research with current understanding")
+        self.console.print(
+            "  2. [yellow]Clarify[/yellow] - Provide more information")
+        self.console.print("  3. [red]Cancel[/red] - Cancel this research")
+
+        choice = Prompt.ask(
+            "\n[bold]Your choice[/bold]",
+            choices=["1", "2", "3", "proceed", "clarify", "cancel"],
+            default="1"
+        )
+
+        if choice in ["3", "cancel"]:
+            if self.audit_logger:
+                self.audit_logger.log_user_confirmation(
+                    False, "User cancelled")
+            return "cancel"
+
+        if choice in ["2", "clarify"]:
+            # User wants to provide more info
+            self.console.print(
+                "\n[dim]Enter additional information or clarification:[/dim]")
+            response = self._read_multiline_input(
+                title="Additional Information",
+                terminator="END"
+            )
+
+            if response.strip():
+                if self.audit_logger:
+                    self.audit_logger.log_user_response(
+                        "User-initiated clarification", response)
+
+                await self._update_session_state(session, {
+                    "user_clarification_response": response,
+                    "awaiting_user_input": False,
+                    "response_processed": False,
+                })
+
+                if self.audit_logger:
+                    self.audit_logger.log_iteration_decision(
+                        "continue", "User provided additional clarification")
+                return "clarify"
+            else:
+                # Empty response, treat as proceed
+                pass
+
+        # User wants to proceed
+        if self.audit_logger:
+            self.audit_logger.log_user_confirmation(True)
+            parsed_intent = state.get("parsed_intent", {})
+            self.audit_logger.finalize(
+                final_intent=parsed_intent,
+                final_confidence=confidence,
+                exit_reason="user_confirmed_proceed"
+            )
+
+        await self._update_session_state(session, {
+            "user_confirmed_proceed": True,
+            "awaiting_user_input": False,
+        })
+
+        self.console.print("\n[green]✅ Proceeding with research...[/green]")
+        return "proceed"
+
+    async def _update_session_state(self, session, state_updates: Dict[str, Any]):
+        """Update the session state with new values."""
+        # Update the main session
+        current_session = await self.session_service.get_session(
+            app_name=self.APP_NAME,
+            user_id=self.user_id,
+            session_id=session.id,
+        )
+
+        if current_session:
+            current_session.state.update(state_updates)
+
+        # Also update the intent session (which is our primary session for phase-by-phase)
+        intent_session = await self.session_service.get_session(
+            app_name=f"{self.APP_NAME}_intent",
+            user_id=self.user_id,
+            session_id=session.id,
+        )
+
+        if intent_session:
+            intent_session.state.update(state_updates)
+
+    async def _sync_session_to_phase(self, main_session, phase_app_name: str):
+        """
+        Sync session state from main session to a phase-specific session.
+        Creates the phase session if it doesn't exist.
+        """
+        # Get main session state
+        main_sess = await self.session_service.get_session(
+            # Use intent session as main source
+            app_name=f"{self.APP_NAME}_intent",
+            user_id=self.user_id,
+            session_id=main_session.id,
+        )
+
+        if main_sess is None:
+            # Try the original app name
+            main_sess = await self.session_service.get_session(
+                app_name=self.APP_NAME,
+                user_id=self.user_id,
+                session_id=main_session.id,
+            )
+
+        current_state = main_sess.state if main_sess else main_session.state
+
+        # Get or create phase session
+        phase_sess = await self.session_service.get_session(
+            app_name=phase_app_name,
+            user_id=self.user_id,
+            session_id=main_session.id,
+        )
+
+        if phase_sess is None:
+            # Create the phase session with the current state
+            phase_sess = await self.session_service.create_session(
+                app_name=phase_app_name,
+                user_id=self.user_id,
+                state=dict(current_state),
+                session_id=main_session.id,
+            )
+        else:
+            # Update existing phase session with current state
+            phase_sess.state.update(current_state)
+
+    async def _sync_session_from_phase(self, main_session, phase_app_name: str):
+        """
+        Sync session state from a phase-specific session back to all sessions.
+        This ensures state changes propagate across all phase runners.
+        """
+        # Get phase session state
+        phase_sess = await self.session_service.get_session(
+            app_name=phase_app_name,
+            user_id=self.user_id,
+            session_id=main_session.id,
+        )
+
+        if phase_sess is None:
+            return
+
+        phase_state = phase_sess.state
+
+        # Update intent session (acts as main)
+        intent_sess = await self.session_service.get_session(
+            app_name=f"{self.APP_NAME}_intent",
+            user_id=self.user_id,
+            session_id=main_session.id,
+        )
+        if intent_sess:
+            intent_sess.state.update(phase_state)
+
+        # Also update the original main session
+        main_sess = await self.session_service.get_session(
+            app_name=self.APP_NAME,
+            user_id=self.user_id,
+            session_id=main_session.id,
+        )
+        if main_sess:
+            main_sess.state.update(phase_state)
 
     def _get_research_query(self) -> str:
         """Get the user's research query."""
@@ -472,15 +1224,19 @@ Let's start your research journey!
 
 ## Getting Started
 1. **Start New Research**: Begin a new research session with your question
-2. **ADK Pipeline**: The engine runs through 4 stages automatically
-3. **Review Results**: Examine your comprehensive research report
+2. **Interactive Clarification**: Answer questions to refine your research intent
+3. **ADK Pipeline**: The engine runs through 4 stages automatically
+4. **Review Results**: Examine your comprehensive research report
 
 ## Research Pipeline (ADK)
 The engine uses Google ADK with the following stages:
 
-1. **Intent Analysis** (IntentClarificationLoop)
-   - Understands your research intent
-   - Asks clarifying questions if needed
+1. **Intent Analysis** (IntentClarificationLoop) - NEW: Interactive!
+   - Analyzes your research query
+   - Shows criteria checklist (research type, domain, entities, etc.)
+   - Asks follow-up questions if confidence is low
+   - Requires your confirmation before proceeding
+   - Audit logs saved to logs/sessions/ for traceability
    
 2. **Data Gathering** (DataGatheringPipeline)
    - Internal Knowledge Agent
@@ -497,14 +1253,24 @@ The engine uses Google ADK with the following stages:
    - Generates markdown report
    - Saves to reports/ directory
 
+## Intent Clarification Features
+- **Criteria Checklist**: See what the system understood
+- **Confidence Score**: Visual indicator of understanding level
+- **Follow-up Questions**: Clarify ambiguous aspects
+- **User Confirmation**: You control when to proceed
+- **Session Audit**: Full traceback of all interactions
+
 ## Tips for Better Results
 - Be specific in your research questions
-- Provide context when possible
-- Review the generated report for insights
+- Answer clarification questions thoroughly
+- Review the criteria checklist before proceeding
+- Check session logs in logs/sessions/ for debugging
 
 ## Configuration
 - Set GEMINI_API_KEY in your .env file
 - Reports are saved in the reports/ directory
+- Session audits saved in logs/sessions/
+- CONFIDENCE_THRESHOLD env var (default: 75)
         """
 
         self.console.print(Panel(Markdown(help_text),
