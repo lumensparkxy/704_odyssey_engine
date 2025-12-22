@@ -33,13 +33,13 @@ Some data sources may have failed or timed out. This is NORMAL and you MUST cont
 You have access to data gathered from three parallel sources (some may have failed):
 
 1. **Internal Knowledge** (from Gemini's training data):
-   {internal_knowledge_result:}
+   {internal_knowledge_result}
 
 2. **Google Search Results** (current web information):
-   {google_search_result:}
+   {google_search_result}
 
 3. **Web Scraping Results** (detailed page content):
-   {web_scraping_result:}
+   {web_scraping_result}
 
 4. **Original Research Intent**:
    {intent_result}

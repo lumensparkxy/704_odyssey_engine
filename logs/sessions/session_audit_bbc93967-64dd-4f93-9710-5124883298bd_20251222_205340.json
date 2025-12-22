@@ -1,0 +1,117 @@
+{
+  "session_id": "bbc93967-64dd-4f93-9710-5124883298bd",
+  "user_id": "user_9ae10223",
+  "started_at": "2025-12-22T20:53:40.001103",
+  "completed_at": "2025-12-22T20:53:48.078821",
+  "original_query": "who is better... python or java for web developement",
+  "intent_iterations": [
+    {
+      "iteration": 1,
+      "timestamp": "2025-12-22T20:53:44.054328",
+      "intent_analysis": {
+        "research_type": "comparison",
+        "domain": "technology",
+        "scope": "specific",
+        "key_entities": [
+          "Python",
+          "Java",
+          "Web development"
+        ],
+        "research_questions": [
+          "What are the main web frameworks for Python vs Java?",
+          "How do Python and Java compare in terms of performance and scalability for web applications?",
+          "Which language has a steeper learning curve for web development?",
+          "What is the ecosystem and community support like for both languages in a web context?",
+          "How do they compare regarding deployment, hosting, and cloud integration?"
+        ],
+        "decision_criteria": [
+          "Performance/Execution speed",
+          "Developer productivity/Time-to-market",
+          "Scalability",
+          "Library and framework availability (e.g., Django/Flask vs. Spring Boot)",
+          "Job market demand and salary",
+          "Ease of maintenance"
+        ],
+        "success_criteria": [
+          "A clear breakdown of the pros and cons of each language for web development",
+          "Guidance on which language to choose based on project type (e.g., startup vs. enterprise)"
+        ],
+        "confidence": 98,
+        "missing_information": [
+          "The user's experience level",
+          "The specific type of project (e.g., a simple blog, a high-traffic fintech app, or a data-heavy application)"
+        ],
+        "assumptions": [
+          "The user is looking for a modern comparison including current frameworks (like Spring Boot for Java and Django/FastAPI for Python)",
+          "The context is backend web development"
+        ]
+      },
+      "confidence_score": 98,
+      "criteria_met": {
+        "has_research_type": true,
+        "has_domain": true,
+        "has_scope": true,
+        "has_key_entities": true,
+        "has_research_questions": true,
+        "has_decision_criteria": true,
+        "missing_info_count": 2
+      },
+      "clarification_questions": [],
+      "user_responses": [],
+      "decision": null
+    }
+  ],
+  "final_intent": {
+    "research_type": "comparison",
+    "domain": "technology",
+    "scope": "specific",
+    "key_entities": [
+      "Python",
+      "Java",
+      "Web development"
+    ],
+    "research_questions": [
+      "What are the main web frameworks for Python vs Java?",
+      "How do Python and Java compare in terms of performance and scalability for web applications?",
+      "Which language has a steeper learning curve for web development?",
+      "What is the ecosystem and community support like for both languages in a web context?",
+      "How do they compare regarding deployment, hosting, and cloud integration?"
+    ],
+    "decision_criteria": [
+      "Performance/Execution speed",
+      "Developer productivity/Time-to-market",
+      "Scalability",
+      "Library and framework availability (e.g., Django/Flask vs. Spring Boot)",
+      "Job market demand and salary",
+      "Ease of maintenance"
+    ],
+    "success_criteria": [
+      "A clear breakdown of the pros and cons of each language for web development",
+      "Guidance on which language to choose based on project type (e.g., startup vs. enterprise)"
+    ],
+    "confidence": 98,
+    "missing_information": [
+      "The user's experience level",
+      "The specific type of project (e.g., a simple blog, a high-traffic fintech app, or a data-heavy application)"
+    ],
+    "assumptions": [
+      "The user is looking for a modern comparison including current frameworks (like Spring Boot for Java and Django/FastAPI for Python)",
+      "The context is backend web development"
+    ]
+  },
+  "final_confidence": 98,
+  "user_confirmed": true,
+  "decision_criteria": {
+    "has_research_type": true,
+    "has_domain": true,
+    "has_scope": true,
+    "has_key_entities": true,
+    "has_research_questions": true,
+    "has_decision_criteria": true,
+    "has_success_criteria": true,
+    "missing_info_count": 2,
+    "assumptions_count": 2,
+    "confidence_threshold_met": true
+  },
+  "exit_reason": "user_confirmed_proceed"
+}

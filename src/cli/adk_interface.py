@@ -5,6 +5,7 @@ This module provides the CLI interface using Google ADK Runner for
 executing the research pipeline with human-in-the-loop intent clarification.
 """
 
+import json
 import os
 import sys
 import asyncio
@@ -1235,24 +1236,55 @@ The analysis phase has:
         """
         Sync session state from main session to a phase-specific session.
         Creates the phase session if it doesn't exist.
+        
+        IMPORTANT: This also ensures intent_result contains the parsed intent
+        (as a JSON string that downstream agents can read), not just the raw
+        LLM output which may be malformed or confusing.
+        
+        Also ensures all required state variables have default values to prevent
+        ADK from throwing 'Context variable not found' errors.
         """
-        # Get main session state
-        main_sess = await self.session_service.get_session(
-            # Use intent session as main source
-            app_name=f"{self.APP_NAME}_intent",
-            user_id=self.user_id,
-            session_id=main_session.id,
-        )
-
-        if main_sess is None:
-            # Try the original app name
-            main_sess = await self.session_service.get_session(
-                app_name=self.APP_NAME,
+        # Collect state from all possible sources (intent, data, analysis sessions)
+        all_state = {}
+        
+        # Try to get state from all phase sessions
+        for app_suffix in ["_intent", "_data", "_analysis", ""]:
+            app_name = f"{self.APP_NAME}{app_suffix}" if app_suffix else self.APP_NAME
+            sess = await self.session_service.get_session(
+                app_name=app_name,
                 user_id=self.user_id,
                 session_id=main_session.id,
             )
-
-        current_state = main_sess.state if main_sess else main_session.state
+            if sess and sess.state:
+                all_state.update(sess.state)
+        
+        # If no state found, use main_session.state
+        if not all_state:
+            all_state = dict(main_session.state) if main_session.state else {}
+        
+        # FIX: Ensure intent_result contains the properly parsed intent
+        parsed_intent = all_state.get("parsed_intent")
+        if parsed_intent and isinstance(parsed_intent, dict):
+            all_state["intent_result"] = json.dumps(parsed_intent, indent=2)
+            self.console.print(
+                f"[dim]📋 Intent synced: {parsed_intent.get('research_type', 'unknown')} - "
+                f"{', '.join(parsed_intent.get('key_entities', ['N/A']))}[/dim]"
+            )
+        
+        # FIX: Ensure all required state variables have defaults to prevent
+        # 'Context variable not found' errors from ADK
+        required_defaults = {
+            "intent_result": json.dumps({"error": "Intent not available"}),
+            "internal_knowledge_result": "No internal knowledge data available.",
+            "google_search_result": "No Google search data available.",
+            "web_scraping_result": "No web scraping data available.",
+            "consolidated_data": "No consolidated data available.",
+            "analysis_result": json.dumps({"error": "Analysis not available"}),
+        }
+        
+        for key, default_value in required_defaults.items():
+            if key not in all_state or not all_state.get(key):
+                all_state[key] = default_value
 
         # Get or create phase session
         phase_sess = await self.session_service.get_session(
@@ -1266,12 +1298,12 @@ The analysis phase has:
             phase_sess = await self.session_service.create_session(
                 app_name=phase_app_name,
                 user_id=self.user_id,
-                state=dict(current_state),
+                state=all_state,
                 session_id=main_session.id,
             )
         else:
             # Update existing phase session with current state
-            phase_sess.state.update(current_state)
+            phase_sess.state.update(all_state)
 
     async def _sync_session_from_phase(self, main_session, phase_app_name: str):
         """
@@ -1288,25 +1320,18 @@ The analysis phase has:
         if phase_sess is None:
             return
 
-        phase_state = phase_sess.state
+        phase_state = dict(phase_sess.state)
 
-        # Update intent session (acts as main)
-        intent_sess = await self.session_service.get_session(
-            app_name=f"{self.APP_NAME}_intent",
-            user_id=self.user_id,
-            session_id=main_session.id,
-        )
-        if intent_sess:
-            intent_sess.state.update(phase_state)
-
-        # Also update the original main session
-        main_sess = await self.session_service.get_session(
-            app_name=self.APP_NAME,
-            user_id=self.user_id,
-            session_id=main_session.id,
-        )
-        if main_sess:
-            main_sess.state.update(phase_state)
+        # Update ALL phase sessions to ensure state propagates
+        for app_suffix in ["_intent", "_data", "_analysis", "_report", ""]:
+            app_name = f"{self.APP_NAME}{app_suffix}" if app_suffix else self.APP_NAME
+            sess = await self.session_service.get_session(
+                app_name=app_name,
+                user_id=self.user_id,
+                session_id=main_session.id,
+            )
+            if sess:
+                sess.state.update(phase_state)
 
     def _get_research_query(self) -> str:
         """Get the user's research query."""

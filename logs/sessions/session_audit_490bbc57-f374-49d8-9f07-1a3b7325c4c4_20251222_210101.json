@@ -1,0 +1,129 @@
+{
+  "session_id": "490bbc57-f374-49d8-9f07-1a3b7325c4c4",
+  "user_id": "user_7aa0e7e4",
+  "started_at": "2025-12-22T21:01:01.015439",
+  "completed_at": "2025-12-22T21:01:07.433999",
+  "original_query": "Python vs Java for web development",
+  "intent_iterations": [
+    {
+      "iteration": 1,
+      "timestamp": "2025-12-22T21:01:07.419255",
+      "intent_analysis": {
+        "research_type": "comparison",
+        "domain": "technology",
+        "scope": "specific",
+        "key_entities": [
+          "Python",
+          "Java",
+          "Web Development",
+          "Django",
+          "Flask",
+          "Spring Boot",
+          "FastAPI"
+        ],
+        "research_questions": [
+          "What are the performance differences between Python and Java in a web server context?",
+          "Which language offers faster time-to-market for web applications?",
+          "How do the ecosystems (frameworks, libraries, ORMs) compare for web development?",
+          "What are the scalability characteristics of Java vs Python for high-traffic sites?",
+          "How does the developer experience and learning curve differ for these two languages?"
+        ],
+        "decision_criteria": [
+          "Performance/Latency",
+          "Scalability",
+          "Development speed",
+          "Ecosystem and community support",
+          "Maintainability",
+          "Type safety vs. flexibility",
+          "Resource consumption (RAM/CPU)"
+        ],
+        "success_criteria": [
+          "A clear side-by-side comparison of the two languages across key web development metrics.",
+          "Guidance on which language is better suited for specific project types (e.g., startups vs. enterprise)."
+        ],
+        "confidence": 95,
+        "missing_information": [
+          "Specific project type (e.g., real-time application, simple CRUD app, or enterprise microservice architecture)",
+          "The current skill level of the development team",
+          "Budget or infrastructure constraints"
+        ],
+        "assumptions": [
+          "The comparison is primarily focused on backend/server-side web development.",
+          "The user is interested in modern frameworks (e.g., Spring Boot for Java and Django/FastAPI for Python)."
+        ]
+      },
+      "confidence_score": 95,
+      "criteria_met": {
+        "has_research_type": true,
+        "has_domain": true,
+        "has_scope": true,
+        "has_key_entities": true,
+        "has_research_questions": true,
+        "has_decision_criteria": true,
+        "missing_info_count": 3
+      },
+      "clarification_questions": [],
+      "user_responses": [],
+      "decision": null
+    }
+  ],
+  "final_intent": {
+    "research_type": "comparison",
+    "domain": "technology",
+    "scope": "specific",
+    "key_entities": [
+      "Python",
+      "Java",
+      "Web Development",
+      "Django",
+      "Flask",
+      "Spring Boot",
+      "FastAPI"
+    ],
+    "research_questions": [
+      "What are the performance differences between Python and Java in a web server context?",
+      "Which language offers faster time-to-market for web applications?",
+      "How do the ecosystems (frameworks, libraries, ORMs) compare for web development?",
+      "What are the scalability characteristics of Java vs Python for high-traffic sites?",
+      "How does the developer experience and learning curve differ for these two languages?"
+    ],
+    "decision_criteria": [
+      "Performance/Latency",
+      "Scalability",
+      "Development speed",
+      "Ecosystem and community support",
+      "Maintainability",
+      "Type safety vs. flexibility",
+      "Resource consumption (RAM/CPU)"
+    ],
+    "success_criteria": [
+      "A clear side-by-side comparison of the two languages across key web development metrics.",
+      "Guidance on which language is better suited for specific project types (e.g., startups vs. enterprise)."
+    ],
+    "confidence": 95,
+    "missing_information": [
+      "Specific project type (e.g., real-time application, simple CRUD app, or enterprise microservice architecture)",
+      "The current skill level of the development team",
+      "Budget or infrastructure constraints"
+    ],
+    "assumptions": [
+      "The comparison is primarily focused on backend/server-side web development.",
+      "The user is interested in modern frameworks (e.g., Spring Boot for Java and Django/FastAPI for Python)."
+    ]
+  },
+  "final_confidence": 95,
+  "user_confirmed": true,
+  "decision_criteria": {
+    "has_research_type": true,
+    "has_domain": true,
+    "has_scope": true,
+    "has_key_entities": true,
+    "has_research_questions": true,
+    "has_decision_criteria": true,
+    "has_success_criteria": true,
+    "missing_info_count": 3,
+    "assumptions_count": 2,
+    "confidence_threshold_met": true
+  },
+  "exit_reason": "user_confirmed_proceed"
+}

@@ -137,23 +137,23 @@ class TestPhase2Instructions:
         assert "{intent_result}" in instruction
 
     def test_consolidator_reads_all_sources(self):
-        """Test ConsolidatorAgent reads from all data sources (with optional syntax)."""
+        """Test ConsolidatorAgent reads from all data sources."""
         from src.agents.odyssey.data_gathering.consolidator import consolidator_agent
 
         instruction = consolidator_agent.instruction
         assert "{intent_result}" in instruction
-        # These use optional syntax {var:} to handle missing state gracefully
-        assert "{internal_knowledge_result:}" in instruction
-        assert "{google_search_result:}" in instruction
-        assert "{web_scraping_result:}" in instruction
+        # These should be standard placeholders (ADK handles missing state gracefully)
+        assert "{internal_knowledge_result}" in instruction
+        assert "{google_search_result}" in instruction
+        assert "{web_scraping_result}" in instruction
 
     def test_analysis_reads_consolidated_data(self):
         """Test AnalysisAgent now reads consolidated_data."""
         from src.agents.odyssey.analysis.agent import analysis_agent
 
         instruction = analysis_agent.instruction
-        # Accept both required {consolidated_data} and optional {consolidated_data:} syntax
-        assert "{consolidated_data}" in instruction or "{consolidated_data:}" in instruction
+        # Should use standard placeholder syntax
+        assert "{consolidated_data}" in instruction
 
 
 class TestPhase2Imports:

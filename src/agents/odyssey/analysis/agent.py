@@ -16,7 +16,7 @@ ANALYSIS_INSTRUCTION = """You are an expert research analyst. Your job is to ana
 
 ## Your Inputs
 - **Research Intent**: {intent_result}
-- **Consolidated Research Data**: {consolidated_data:}
+- **Consolidated Research Data**: {consolidated_data}
 
 **IMPORTANT**: If the consolidated data is marked as "Partial" or indicates some sources failed:
 - Work with whatever data IS available

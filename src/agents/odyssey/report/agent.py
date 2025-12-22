@@ -8,7 +8,6 @@ This module contains:
 """
 
 import os
-from datetime import datetime
 from google.adk.agents import LlmAgent, SequentialAgent
 
 from ..tools.file_writer import save_report_to_file
@@ -21,38 +20,49 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 # Report Generator Agent
 # ============================================================================
 
+# NOTE: Using a string instruction (not a function) so ADK automatically
+# substitutes {variable} placeholders with session state values.
+# This is critical - function instructions bypass state injection!
 REPORT_GENERATOR_INSTRUCTION = """You are an expert research report writer. Your job is to compile a comprehensive, well-structured markdown research report based on the analyzed research data.
 
 ## Your Inputs (from state)
-- **Research Intent**: {intent_result} - Contains the original query, research questions, and output preferences
-- **Consolidated Data**: {consolidated_data:} - Contains information gathered from multiple sources
-- **Analysis Results**: {analysis_result:} - Contains themes, conflicts, synthesis, and quality assessment
+You MUST use the following data to generate the report. Do NOT make up topics or ignore this data:
 
-**IMPORTANT - Handling Partial Data**: 
-If any input shows "Partial", "timed out", or indicates some data sources failed:
-- Still generate a complete report with available data
-- Note limitations in the Executive Summary
-- Add a "Data Collection Notes" section if significant sources failed
-- A partial report is still valuable to the user
+### Research Intent (CRITICAL - defines what the report should be about):
+{intent_result}
+
+### Consolidated Data (information gathered from multiple sources):
+{consolidated_data}
+
+### Analysis Results (themes, conflicts, synthesis):
+{analysis_result}
+
+**IMPORTANT**: 
+1. The report topic MUST match the research intent above. Do not hallucinate a different topic.
+2. If any input shows "Partial", "timed out", or indicates some data sources failed:
+   - Still generate a complete report with available data
+   - Note limitations in the Executive Summary
+   - A partial report is still valuable to the user
 
 ## Report Structure
 
 Generate a complete markdown research report with the following sections:
 
 ### 1. Title and Metadata
+The title MUST reflect the actual research topic from the intent above.
 ```markdown
-# [Research Topic]: Research Report
+# [Actual Research Topic from Intent]: Research Report
 
-**Generated:** USE_CURRENT_DATETIME_PLACEHOLDER
+**Generated:** [Current date and time]
 **Research Type:** [From intent - e.g., General Research, Comparison, Analysis]
 **Domain:** [From intent - e.g., Technology, Finance, Health]
-**Research Confidence:** See individual sections
+**Research Confidence:** [Based on data quality]
 
 ---
 ```
 
 ### 2. Executive Summary (200-300 words)
-- State the research objective clearly
+- State the research objective clearly (from the intent)
 - Highlight the most important findings (3-5 key points)
 - Mention key conclusions or insights
 - Note any significant limitations
@@ -65,7 +75,7 @@ Generate a complete markdown research report with the following sections:
 - Include comparison tables if the research involved comparisons
 
 ### 4. Detailed Analysis
-For each major theme or research question, create a subsection:
+For each major theme or research question from the intent:
 - **Theme/Question Title**
 - Detailed explanation (300-500 words per section)
 - Supporting evidence and data
@@ -97,20 +107,15 @@ For each major theme or research question, create a subsection:
 ## Output Format
 Output the complete markdown report as plain text. Do NOT wrap it in code blocks.
 Start directly with the `#` title header.
+The title MUST match the research topic from the intent_result above.
 """
-
-
-def get_report_generator_instruction(context) -> str:
-    """Generate instruction with current datetime injected."""
-    current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return REPORT_GENERATOR_INSTRUCTION.replace("USE_CURRENT_DATETIME_PLACEHOLDER", current_dt)
 
 
 report_generator_agent = LlmAgent(
     name="ReportGeneratorAgent",
     model=GEMINI_MODEL,
     description="Generates comprehensive markdown research reports from analyzed data.",
-    instruction=get_report_generator_instruction,
+    instruction=REPORT_GENERATOR_INSTRUCTION,  # String, not function - enables state injection
     output_key="report_content",
 )
 
