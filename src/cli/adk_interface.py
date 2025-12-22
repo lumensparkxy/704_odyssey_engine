@@ -399,22 +399,23 @@ Let's start your research journey!
                     # Build enriched query in CLI (before next loop iteration)
                     # This ensures IntentAnalyzer gets the full context
                     original_query = state.get("original_query", "")
-                    clarification_questions = state.get("clarification_questions", [])
-                    
+                    clarification_questions = state.get(
+                        "clarification_questions", [])
+
                     # Build cumulative context with all clarifications
                     enriched_query = self._build_enriched_query(
-                        original_query, 
-                        user_response, 
+                        original_query,
+                        user_response,
                         clarification_questions,
                         clarification_round
                     )
-                    
+
                     # Create a new message with the enriched query for the next round
                     current_message = types.Content(
                         role="user",
                         parts=[types.Part.from_text(text=enriched_query)]
                     )
-                    
+
                     # Update session state with enriched query for future reference
                     await self._update_session_state(session, {
                         "awaiting_user_input": False,
@@ -728,38 +729,40 @@ Ready to gather data from multiple sources."""
     ) -> str:
         """
         Build an enriched query that includes the user's clarification.
-        
+
         This is called by the CLI before the next intent analysis round,
         ensuring IntentAnalyzer receives the full context.
-        
+
         Args:
             original_query: The current query (may already include previous clarifications)
             user_response: The user's latest clarification response
             clarification_questions: The questions that were asked
             round_number: Current clarification round number
-            
+
         Returns:
             Enriched query string with all context
         """
         enriched_parts = []
-        
+
         # Start with the original/current query
         enriched_parts.append(f"Research Request: {original_query}")
         enriched_parts.append("")
-        
+
         # Add the clarification context
-        enriched_parts.append(f"=== User Clarification (Round {round_number}) ===")
-        
+        enriched_parts.append(
+            f"=== User Clarification (Round {round_number}) ===")
+
         if clarification_questions:
             enriched_parts.append("Questions asked:")
             for i, q in enumerate(clarification_questions, 1):
                 enriched_parts.append(f"  {i}. {q}")
             enriched_parts.append("")
-        
+
         enriched_parts.append(f"User's response: {user_response}")
         enriched_parts.append("")
-        enriched_parts.append("Please re-analyze the research intent with this additional context.")
-        
+        enriched_parts.append(
+            "Please re-analyze the research intent with this additional context.")
+
         return "\n".join(enriched_parts)
 
     async def _get_data_gathering_summary(self, session) -> str:
